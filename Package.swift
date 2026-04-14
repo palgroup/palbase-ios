@@ -10,10 +10,6 @@ let package = Package(
         .watchOS(.v8)
     ],
     products: [
-        // Umbrella — re-exports everything
-        .library(name: "Palbase", targets: ["Palbase"]),
-
-        // Granular per-module (like Firebase)
         .library(name: "PalbaseCore", targets: ["PalbaseCore"]),
         .library(name: "PalbaseAuth", targets: ["PalbaseAuth"]),
         .library(name: "PalbaseDB", targets: ["PalbaseDB"]),
@@ -29,7 +25,6 @@ let package = Package(
     ],
     targets: [
         .target(name: "PalbaseCore"),
-
         .target(name: "PalbaseAuth", dependencies: ["PalbaseCore"]),
         .target(name: "PalbaseDB", dependencies: ["PalbaseCore"]),
         .target(name: "PalbaseDocs", dependencies: ["PalbaseCore"]),
@@ -42,26 +37,6 @@ let package = Package(
         .target(name: "PalbaseLinks", dependencies: ["PalbaseCore"]),
         .target(name: "PalbaseCms", dependencies: ["PalbaseCore"]),
 
-        // Umbrella: depends on everything
-        .target(
-            name: "Palbase",
-            dependencies: [
-                "PalbaseCore",
-                "PalbaseAuth",
-                "PalbaseDB",
-                "PalbaseDocs",
-                "PalbaseStorage",
-                "PalbaseRealtime",
-                "PalbaseFunctions",
-                "PalbaseFlags",
-                "PalbaseNotifications",
-                "PalbaseAnalytics",
-                "PalbaseLinks",
-                "PalbaseCms",
-            ]
-        ),
-
-        // Tests
         .testTarget(name: "PalbaseCoreTests", dependencies: ["PalbaseCore"]),
     ],
     swiftLanguageModes: [.v6]

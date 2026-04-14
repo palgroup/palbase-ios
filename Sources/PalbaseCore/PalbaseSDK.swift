@@ -29,9 +29,7 @@ public enum PalbaseSDK {
         Task { await tokens.loadFromStorage() }
     }
 
-    /// The active configuration, if `configure(_:)` has been called.
-    public static var config: PalbaseConfig? { state.config }
-
+    package static var config: PalbaseConfig? { state.config }
     package static var http: HTTPRequesting? { state.http }
     package static var tokens: TokenManager? { state.tokens }
 

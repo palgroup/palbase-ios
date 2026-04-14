@@ -7,7 +7,7 @@ public struct Session: Sendable, Equatable, Codable {
     /// Unix timestamp (seconds) when the access token expires.
     public let expiresAt: Int64
 
-    public init(accessToken: String, refreshToken: String, expiresAt: Int64) {
+    package init(accessToken: String, refreshToken: String, expiresAt: Int64) {
         self.accessToken = accessToken
         self.refreshToken = refreshToken
         self.expiresAt = expiresAt

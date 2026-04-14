@@ -8,7 +8,7 @@ public struct User: Sendable, Equatable, Codable {
     public let createdAt: String
     public let updatedAt: String
 
-    public init(id: String, email: String, emailVerified: Bool, createdAt: String, updatedAt: String) {
+    package init(id: String, email: String, emailVerified: Bool, createdAt: String, updatedAt: String) {
         self.id = id
         self.email = email
         self.emailVerified = emailVerified
@@ -20,6 +20,11 @@ public struct User: Sendable, Equatable, Codable {
 public struct AuthSuccess: Sendable {
     public let user: User
     public let session: Session
+
+    package init(user: User, session: Session) {
+        self.user = user
+        self.session = session
+    }
 }
 
 // MARK: - Internal request/response DTOs
