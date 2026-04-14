@@ -40,6 +40,7 @@ let package = Package(
         .target(name: "PalbaseCms", dependencies: ["PalbaseCore"]),
 
         .testTarget(name: "PalbaseCoreTests", dependencies: ["PalbaseCore"]),
+        .testTarget(name: "PalbaseDBTests", dependencies: ["PalbaseDB"]),
     ],
     swiftLanguageModes: [.v6]
 )

@@ -60,7 +60,7 @@ let result = try await PalbaseAuth.shared.signIn(
 |--------|--------|------|
 | [`PalbaseCore`](Sources/PalbaseCore/README.md) | ✅ | SDK foundation: `Palbase.configure`, `PalbaseConfig`, `Session`, `PalbaseError` |
 | [`PalbaseAuth`](Sources/PalbaseAuth/README.md) | ✅ | Email/password, magic link, OAuth, Apple Sign In, sessions |
-| [`PalbaseDB`](Sources/PalbaseDB/README.md) | 🚧 | Relational DB (PostgREST) |
+| [`PalbaseDB`](Sources/PalbaseDB/README.md) | ✅ | Relational DB (PostgREST): typed queries, RPC, transactions |
 | [`PalbaseDocs`](Sources/PalbaseDocs/README.md) | 🚧 | Document DB (Firestore-like) |
 | [`PalbaseStorage`](Sources/PalbaseStorage/README.md) | 🚧 | File storage with progress |
 | [`PalbaseRealtime`](Sources/PalbaseRealtime/README.md) | 🚧 | WebSocket subscriptions |
