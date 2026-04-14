@@ -10,7 +10,9 @@ let package = Package(
         .watchOS(.v8)
     ],
     products: [
-        .library(name: "PalbaseCore", targets: ["PalbaseCore"]),
+        // PalbaseCore is intentionally NOT a product — it's an internal target.
+        // Users add only the modules they need (PalbaseAuth, PalbaseDB, etc.) and
+        // each module re-exports Core's symbols via @_exported import.
         .library(name: "PalbaseAuth", targets: ["PalbaseAuth"]),
         .library(name: "PalbaseDB", targets: ["PalbaseDB"]),
         .library(name: "PalbaseDocs", targets: ["PalbaseDocs"]),
