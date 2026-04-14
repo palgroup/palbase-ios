@@ -1,51 +1,50 @@
 import Foundation
 
 /// Abstraction over HTTP — production implementation is `HttpClient`, tests can mock.
+/// All methods throw `PalbaseCoreError` for transport/HTTP failures.
 package protocol HTTPRequesting: Sendable {
-    /// Execute a request and decode the response as `T`.
-    /// Throws `PalbaseCoreError` on transport/HTTP failures.
-    /// On HTTP 4xx/5xx returns the raw response data so callers can map to module-specific errors.
+    /// Execute and decode response.
     func request<T: Decodable & Sendable>(
         method: String,
         path: String,
         body: (any Encodable & Sendable)?,
         headers: [String: String]
-    ) async throws -> T
+    ) async throws(PalbaseCoreError) -> T
 
-    /// Execute a request that returns no body (204 / discarded).
+    /// Execute, ignore body.
     func requestVoid(
         method: String,
         path: String,
         body: (any Encodable & Sendable)?,
         headers: [String: String]
-    ) async throws
+    ) async throws(PalbaseCoreError)
 
-    /// Execute and return raw response data + status. Used by modules that need to map
-    /// HTTP errors to their own error types via `PalbaseErrorEnvelope`.
+    /// Execute and return raw data + status. Used when caller wants to map server
+    /// envelope to a module-specific error.
     func requestRaw(
         method: String,
         path: String,
         body: (any Encodable & Sendable)?,
         headers: [String: String]
-    ) async throws -> (data: Data, status: Int)
+    ) async throws(PalbaseCoreError) -> (data: Data, status: Int)
 }
 
 extension HTTPRequesting {
-    public func request<T: Decodable & Sendable>(
+    package func request<T: Decodable & Sendable>(
         method: String,
         path: String,
         body: (any Encodable & Sendable)? = nil,
         headers: [String: String] = [:]
-    ) async throws -> T {
+    ) async throws(PalbaseCoreError) -> T {
         try await request(method: method, path: path, body: body, headers: headers)
     }
 
-    public func requestVoid(
+    package func requestVoid(
         method: String,
         path: String,
         body: (any Encodable & Sendable)? = nil,
         headers: [String: String] = [:]
-    ) async throws {
+    ) async throws(PalbaseCoreError) {
         try await requestVoid(method: method, path: path, body: body, headers: headers)
     }
 }

@@ -43,12 +43,12 @@ public enum PalbaseSDK {
     /// The shared token manager. Throws `.notConfigured` if not configured.
     package static var tokens: TokenManager? { state.tokens }
 
-    package static func requireHTTP() throws -> HTTPRequesting {
+    package static func requireHTTP() throws(PalbaseCoreError) -> HTTPRequesting {
         guard let http = state.http else { throw PalbaseCoreError.notConfigured }
         return http
     }
 
-    package static func requireTokens() throws -> TokenManager {
+    package static func requireTokens() throws(PalbaseCoreError) -> TokenManager {
         guard let tokens = state.tokens else { throw PalbaseCoreError.notConfigured }
         return tokens
     }

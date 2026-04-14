@@ -13,16 +13,16 @@ package actor HttpClient: HTTPRequesting {
         self.tokens = tokens
     }
 
-    public func addInterceptor(_ interceptor: RequestInterceptor) {
+    package func addInterceptor(_ interceptor: RequestInterceptor) {
         interceptors.append(interceptor)
     }
 
-    public func request<T: Decodable & Sendable>(
+    package func request<T: Decodable & Sendable>(
         method: String,
         path: String,
         body: (any Encodable & Sendable)?,
         headers: [String: String]
-    ) async throws -> T {
+    ) async throws(PalbaseCoreError) -> T {
         let (data, _) = try await requestRaw(method: method, path: path, body: body, headers: headers)
 
         if T.self == EmptyResponse.self {
@@ -36,21 +36,21 @@ package actor HttpClient: HTTPRequesting {
         }
     }
 
-    public func requestVoid(
+    package func requestVoid(
         method: String,
         path: String,
         body: (any Encodable & Sendable)?,
         headers: [String: String]
-    ) async throws {
+    ) async throws(PalbaseCoreError) {
         _ = try await requestRaw(method: method, path: path, body: body, headers: headers)
     }
 
-    public func requestRaw(
+    package func requestRaw(
         method: String,
         path: String,
         body: (any Encodable & Sendable)?,
         headers: [String: String]
-    ) async throws -> (data: Data, status: Int) {
+    ) async throws(PalbaseCoreError) -> (data: Data, status: Int) {
         // Auto-refresh expired token before request
         if await tokens.isExpired, await tokens.refreshFunction != nil, await tokens.refreshToken != nil {
             _ = try? await tokens.refreshSession()
@@ -69,7 +69,7 @@ package actor HttpClient: HTTPRequesting {
 
     // MARK: - Private
 
-    private func getBaseURL() throws -> URL {
+    private func getBaseURL() throws(PalbaseCoreError) -> URL {
         if let urlString = config.url, let url = URL(string: urlString) {
             return url
         }
@@ -111,7 +111,7 @@ package actor HttpClient: HTTPRequesting {
         body: (any Encodable & Sendable)?,
         extraHeaders: [String: String],
         attempt: Int
-    ) async throws -> (data: Data, status: Int) {
+    ) async throws(PalbaseCoreError) -> (data: Data, status: Int) {
         let url = try getBaseURL().appendingPathComponent(path)
         var request = URLRequest(url: url)
         request.httpMethod = method
@@ -129,7 +129,13 @@ package actor HttpClient: HTTPRequesting {
         }
 
         for interceptor in interceptors {
-            try await interceptor.intercept(&request)
+            do {
+                try await interceptor.intercept(&request)
+            } catch let err as PalbaseCoreError {
+                throw err
+            } catch {
+                throw PalbaseCoreError.network(message: "Interceptor failed: \(error.localizedDescription)")
+            }
         }
 
         let data: Data
