@@ -59,6 +59,70 @@ package actor HttpClient: HTTPRequesting {
         return try await executeWithRetry(method: method, path: path, body: body, extraHeaders: headers, attempt: 0)
     }
 
+    package func requestRawBody(
+        method: String,
+        path: String,
+        body: Data?,
+        headers: [String: String]
+    ) async throws(PalbaseCoreError) -> (data: Data, status: Int, headers: [String: String]) {
+        if await tokens.isExpired, await tokens.refreshFunction != nil, await tokens.refreshToken != nil {
+            _ = try? await tokens.refreshSession()
+        }
+
+        let url: URL
+        do {
+            url = try getBaseURL().appendingPathComponent(path)
+        } catch {
+            throw error
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.timeoutInterval = config.requestTimeout
+        if let body { request.httpBody = body }
+
+        var merged = await buildHeaders(extra: headers)
+        // Caller-provided Content-Type wins; strip the default JSON one unless caller set it.
+        if headers["Content-Type"] == nil && headers["content-type"] == nil {
+            merged.removeValue(forKey: "Content-Type")
+        }
+        for (k, v) in merged { request.setValue(v, forHTTPHeaderField: k) }
+
+        for interceptor in interceptors {
+            do {
+                try await interceptor.intercept(&request)
+            } catch let err as PalbaseCoreError {
+                throw err
+            } catch {
+                throw PalbaseCoreError.network(message: "Interceptor failed: \(error.localizedDescription)")
+            }
+        }
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await config.urlSession.data(for: request)
+        } catch {
+            throw PalbaseCoreError.network(message: error.localizedDescription)
+        }
+
+        guard let http = response as? HTTPURLResponse else {
+            throw PalbaseCoreError.network(message: "Invalid response (not HTTP).")
+        }
+
+        var respHeaders: [String: String] = [:]
+        for (k, v) in http.allHeaderFields {
+            if let ks = k as? String, let vs = v as? String {
+                respHeaders[ks] = vs
+            }
+        }
+
+        if !(200..<300).contains(http.statusCode) {
+            throw mapHTTPError(status: http.statusCode, data: data)
+        }
+        return (data, http.statusCode, respHeaders)
+    }
+
     // MARK: - Internal
 
     nonisolated static func parseProjectRef(from apiKey: String) -> String? {
