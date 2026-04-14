@@ -12,6 +12,10 @@ public enum AuthError: PalbaseError {
     case mfaRequired(challengeId: String)
     case sessionExpired(message: String = "Session expired, please sign in again")
     case noActiveSession(message: String = "No active session")
+    case mfaInvalidCode(message: String = "Invalid MFA code")
+    case mfaFactorNotFound(message: String = "MFA factor not found")
+    case passkeyNotSupported(message: String = "Passkeys require iOS 16+")
+    case passkeyCancelled(message: String = "Passkey authentication cancelled")
 
     // Generic transport (translated from PalbaseCoreError)
     case network(message: String)
@@ -36,6 +40,10 @@ public enum AuthError: PalbaseError {
         case .mfaRequired: return "mfa_required"
         case .sessionExpired: return "session_expired"
         case .noActiveSession: return "no_active_session"
+        case .mfaInvalidCode: return "mfa_invalid_code"
+        case .mfaFactorNotFound: return "mfa_factor_not_found"
+        case .passkeyNotSupported: return "passkey_not_supported"
+        case .passkeyCancelled: return "passkey_cancelled"
         case .network: return "network_error"
         case .decoding: return "decoding_error"
         case .rateLimited: return "rate_limited"
@@ -70,7 +78,9 @@ public enum AuthError: PalbaseError {
         switch self {
         case .invalidCredentials(let m), .userNotFound(let m), .emailAlreadyInUse(let m),
              .weakPassword(let m), .emailNotVerified(let m), .sessionExpired(let m),
-             .noActiveSession(let m), .network(let m), .decoding(let m):
+             .noActiveSession(let m), .mfaInvalidCode(let m), .mfaFactorNotFound(let m),
+             .passkeyNotSupported(let m), .passkeyCancelled(let m),
+             .network(let m), .decoding(let m):
             return m
         case .mfaRequired: return "MFA challenge required"
         case .rateLimited(let retryAfter):
@@ -93,6 +103,8 @@ public enum AuthError: PalbaseError {
             let challengeId = envelope.details?["challenge_id"] ?? ""
             return .mfaRequired(challengeId: challengeId)
         case "session_expired": return .sessionExpired(message: envelope.message)
+        case "mfa_invalid_code": return .mfaInvalidCode(message: envelope.message)
+        case "mfa_factor_not_found": return .mfaFactorNotFound(message: envelope.message)
         default:
             return .server(code: envelope.code, message: envelope.message, requestId: envelope.requestId)
         }

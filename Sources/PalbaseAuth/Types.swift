@@ -83,6 +83,66 @@ public struct Identity: Sendable, Equatable, Codable {
     }
 }
 
+/// Type of MFA factor.
+public enum MFAFactorType: String, Sendable, Codable {
+    case totp
+    case email
+    case passkey
+}
+
+/// An enrolled MFA factor on the user's account.
+public struct MFAFactor: Sendable, Equatable, Codable {
+    public let id: String
+    public let type: MFAFactorType
+    public let verified: Bool
+    public let createdAt: String
+
+    package init(id: String, type: MFAFactorType, verified: Bool, createdAt: String) {
+        self.id = id
+        self.type = type
+        self.verified = verified
+        self.createdAt = createdAt
+    }
+}
+
+/// Result returned when enrolling a new TOTP factor.
+public struct MFAEnrollResult: Sendable {
+    public let enrollmentId: String?
+    /// TOTP shared secret. Show it as text or generate a QR code with the otp URL.
+    public let secret: String?
+    /// Pre-built `otpauth://` URL — feed to a QR generator and display to the user.
+    public let otpUrl: String?
+    /// Server may also return a pre-rendered QR code (data URL).
+    public let qrCode: String?
+    /// One-time recovery codes — display ONCE and ask user to save.
+    public let recoveryCodes: [String]?
+
+    package init(enrollmentId: String?, secret: String?, otpUrl: String?, qrCode: String?, recoveryCodes: [String]?) {
+        self.enrollmentId = enrollmentId
+        self.secret = secret
+        self.otpUrl = otpUrl
+        self.qrCode = qrCode
+        self.recoveryCodes = recoveryCodes
+    }
+}
+
+/// A trusted device entry.
+public struct TrustedDevice: Sendable, Equatable, Codable {
+    public let id: String
+    public let deviceName: String?
+    public let createdAt: String
+    public let lastUsedAt: String
+    public let expiresAt: String
+
+    package init(id: String, deviceName: String?, createdAt: String, lastUsedAt: String, expiresAt: String) {
+        self.id = id
+        self.deviceName = deviceName
+        self.createdAt = createdAt
+        self.lastUsedAt = lastUsedAt
+        self.expiresAt = expiresAt
+    }
+}
+
 /// One active session for the current user.
 public struct AuthSession: Sendable, Equatable, Codable {
     public let id: String
@@ -225,6 +285,107 @@ struct MagicLinkBody: Encodable, Sendable {
 
 struct MagicLinkVerifyBody: Encodable, Sendable {
     let token: String
+}
+
+// MARK: - MFA DTOs
+
+struct MFAEnrollBody: Encodable, Sendable {
+    let type: String
+}
+
+struct MFAEnrollResultDTO: Decodable, Sendable {
+    let enrollmentId: String?
+    let secret: String?
+    let otpUrl: String?
+    let qrCode: String?
+    let recoveryCodes: [String]?
+
+    func toResult() -> MFAEnrollResult {
+        MFAEnrollResult(
+            enrollmentId: enrollmentId,
+            secret: secret,
+            otpUrl: otpUrl,
+            qrCode: qrCode,
+            recoveryCodes: recoveryCodes
+        )
+    }
+}
+
+struct MFAVerifyEnrollmentBody: Encodable, Sendable {
+    let code: String
+}
+
+struct MFAChallengeBody: Encodable, Sendable {
+    let mfaToken: String
+    let type: String
+    let code: String
+}
+
+struct MFARecoveryBody: Encodable, Sendable {
+    let mfaToken: String
+    let code: String
+}
+
+struct MFAFactorListDTO: Decodable, Sendable {
+    let factors: [MFAFactorDTO]
+}
+
+struct MFAFactorDTO: Decodable, Sendable {
+    let id: String
+    let type: String
+    let verified: Bool
+    let createdAt: String
+
+    func toFactor() -> MFAFactor? {
+        guard let kind = MFAFactorType(rawValue: type) else { return nil }
+        return MFAFactor(id: id, type: kind, verified: verified, createdAt: createdAt)
+    }
+}
+
+struct MFAEmailChallengeBody: Encodable, Sendable {
+    let mfaToken: String
+}
+
+struct MFAEmailVerifyBody: Encodable, Sendable {
+    let mfaToken: String
+    let code: String
+}
+
+struct RecoveryCodesDTO: Decodable, Sendable {
+    let recoveryCodes: [String]
+}
+
+// MARK: - Trusted Device DTOs
+
+struct RegisterTrustedDeviceBody: Encodable, Sendable {
+    let fingerprintHash: String
+    let deviceName: String?
+}
+
+struct TrustedDeviceTokenDTO: Decodable, Sendable {
+    let trustedDeviceToken: String
+}
+
+struct TrustedDeviceListDTO: Decodable, Sendable {
+    let trustedDevices: [TrustedDeviceDTO]
+}
+
+struct TrustedDeviceDTO: Decodable, Sendable {
+    let id: String
+    let deviceName: String?
+    let createdAt: String
+    let lastUsedAt: String
+    let expiresAt: String
+
+    func toTrustedDevice() -> TrustedDevice {
+        TrustedDevice(
+            id: id,
+            deviceName: deviceName,
+            createdAt: createdAt,
+            lastUsedAt: lastUsedAt,
+            expiresAt: expiresAt
+        )
+    }
 }
 
 struct AuthSessionListDTO: Decodable, Sendable {

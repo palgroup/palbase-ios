@@ -158,6 +158,100 @@ try await PalbaseAuth.shared.revokeSession(id: sessions[0].id)
 try await PalbaseAuth.shared.revokeAllSessions()
 ```
 
+## MFA (Multi-Factor Auth)
+
+### TOTP enrollment (Authenticator apps)
+
+```swift
+// 1. Start enrollment — show secret/QR to user
+let result = try await PalbaseAuth.shared.enrollMFA(type: .totp)
+// result.secret           → "JBSWY3DPEHPK3PXP" (Base32)
+// result.otpUrl           → "otpauth://totp/Palbase:..." (feed to QR generator)
+// result.recoveryCodes    → ["abcd-efgh", ...] (show ONCE, ask to save)
+
+// 2. User scans QR with Google Authenticator / 1Password
+// 3. User enters the 6-digit code from their app
+try await PalbaseAuth.shared.verifyMFAEnrollment(code: "123456")
+```
+
+### Sign-in with MFA
+
+```swift
+do {
+    try await PalbaseAuth.shared.signIn(email: email, password: password)
+} catch AuthError.mfaRequired(let challengeId) {
+    // Prompt user for MFA code
+    let code = await promptForCode()
+    try await PalbaseAuth.shared.submitMFAChallenge(
+        mfaToken: challengeId,
+        type: .totp,
+        code: code
+    )
+}
+```
+
+### Recovery codes
+
+```swift
+// User lost their authenticator app:
+try await PalbaseAuth.shared.recoverMFA(
+    mfaToken: challengeId,
+    recoveryCode: "abcd-efgh"
+)
+```
+
+### Email MFA
+
+```swift
+// Enroll email as a factor
+try await PalbaseAuth.shared.enrollEmailMFA()
+
+// On sign-in, send code to email
+try await PalbaseAuth.shared.sendEmailMFACode(mfaToken: challengeId)
+
+// Verify code
+try await PalbaseAuth.shared.verifyEmailMFACode(
+    mfaToken: challengeId,
+    code: "123456"
+)
+```
+
+### Manage factors
+
+```swift
+let factors = try await PalbaseAuth.shared.listMFAFactors()
+for f in factors {
+    print("\(f.type.rawValue) — verified: \(f.verified)")
+}
+
+try await PalbaseAuth.shared.removeMFAFactor(id: factors[0].id)
+
+let newCodes = try await PalbaseAuth.shared.regenerateRecoveryCodes()
+// Show new codes once, invalidate old ones
+```
+
+## Trusted Devices
+
+Skip MFA for known devices.
+
+```swift
+// Generate a stable fingerprint for this device (do this yourself)
+let fingerprint = sha256("\(UIDevice.current.identifierForVendor!)|\(Bundle.main.bundleIdentifier!)")
+
+// Register after successful sign-in
+let token = try await PalbaseAuth.shared.registerTrustedDevice(
+    fingerprintHash: fingerprint,
+    deviceName: "iPhone 15 Pro"
+)
+// Save token to Keychain — present on future sign-ins to skip MFA
+
+// List
+let devices = try await PalbaseAuth.shared.listTrustedDevices()
+
+// Revoke
+try await PalbaseAuth.shared.revokeTrustedDevice(id: devices[0].id)
+```
+
 ## Auth State Listener
 
 ```swift
@@ -221,6 +315,10 @@ do {
 | `.weakPassword` | Password fails policy |
 | `.emailNotVerified` | Sign in requires verified email |
 | `.mfaRequired(challengeId)` | MFA challenge needed before sign-in completes |
+| `.mfaInvalidCode` | Wrong TOTP/email code |
+| `.mfaFactorNotFound` | Factor ID doesn't exist |
+| `.passkeyNotSupported` | Passkeys require iOS 16+ |
+| `.passkeyCancelled` | User cancelled passkey prompt |
 | `.sessionExpired` | Refresh failed or no valid session |
 | `.noActiveSession` | Operation needs a signed-in user |
 | `.network(message)` | Transport failure |
@@ -244,10 +342,12 @@ do {
 | `Identity` | Linked OAuth identity |
 | `AuthSession` | One active session (from `listSessions`) |
 | `VerificationChallenge` | Pending email verification (token + code) |
+| `MFAFactorType` | `.totp`, `.email`, `.passkey` |
+| `MFAFactor` | Enrolled MFA factor |
+| `MFAEnrollResult` | TOTP secret, otp URL, recovery codes |
+| `TrustedDevice` | Registered trusted device entry |
 
 ## TODO
 
-- [ ] MFA (TOTP enroll/verify, email)
-- [ ] Passkeys (ASAuthorizationPlatformPublicKeyCredentialProvider)
-- [ ] Trusted devices
-- [ ] DPoP (proof-of-possession)
+- [ ] Passkeys (ASAuthorizationPlatformPublicKeyCredentialProvider) — backend not ready yet
+- [ ] DPoP (proof-of-possession token binding) — Phase 8
