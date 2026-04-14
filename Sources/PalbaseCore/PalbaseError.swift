@@ -1,44 +1,117 @@
 import Foundation
 
-public struct PalbaseError: Error, Equatable, Sendable {
-    public let code: String
-    public let message: String
-    public let status: Int
-    public let details: String?
-    public let requestId: String?
+/// Common protocol for all Palbase errors. Each module defines its own concrete error type
+/// that conforms to this — uniform handling, module-specific cases.
+public protocol PalbaseError: Error, Sendable, LocalizedError {
+    /// Stable error code (snake_case). Useful for programmatic handling and i18n keys.
+    var code: String { get }
 
-    public init(
-        code: String,
-        message: String,
-        status: Int = 0,
-        details: String? = nil,
-        requestId: String? = nil
-    ) {
-        self.code = code
-        self.message = message
-        self.status = status
-        self.details = details
-        self.requestId = requestId
-    }
-}
+    /// HTTP status code if the error originated from an HTTP response.
+    var statusCode: Int? { get }
 
-extension PalbaseError: LocalizedError {
-    public var errorDescription: String? { message }
+    /// Server-provided request ID for tracing.
+    var requestId: String? { get }
 }
 
 extension PalbaseError {
-    public static let networkError = PalbaseError(
-        code: "network_error",
-        message: "Network request failed"
-    )
+    public var statusCode: Int? { nil }
+    public var requestId: String? { nil }
+}
 
-    public static let invalidResponse = PalbaseError(
-        code: "invalid_response",
-        message: "Invalid server response"
-    )
+// MARK: - Core (transport-level) errors
 
-    public static let timeout = PalbaseError(
-        code: "timeout",
-        message: "Request timed out"
-    )
+/// Errors raised by the HTTP transport layer and SDK configuration.
+/// Module-specific errors (e.g., `AuthError`) are defined in their own module.
+public enum PalbaseCoreError: PalbaseError {
+    /// Network-level failure (no response, connection lost, timeout).
+    case network(message: String)
+
+    /// Server returned an HTTP error response without a recognized envelope.
+    case http(status: Int, code: String, message: String, requestId: String? = nil)
+
+    /// Failed to decode the response body.
+    case decoding(message: String)
+
+    /// Failed to encode the request body.
+    case encoding(message: String)
+
+    /// Rate limit exceeded (429).
+    case rateLimited(retryAfter: Int? = nil)
+
+    /// Server error (5xx).
+    case server(status: Int, message: String)
+
+    /// Invalid configuration (e.g., malformed API key, missing URL).
+    case invalidConfiguration(message: String)
+
+    /// SDK not configured. Call `PalbaseSDK.configure(apiKey:)` first.
+    case notConfigured
+
+    /// Token refresh failed (no refresh token, refresh endpoint failed).
+    case tokenRefreshFailed(message: String)
+
+    public var code: String {
+        switch self {
+        case .network: return "network_error"
+        case .http(_, let code, _, _): return code
+        case .decoding: return "decoding_error"
+        case .encoding: return "encoding_error"
+        case .rateLimited: return "rate_limited"
+        case .server: return "server_error"
+        case .invalidConfiguration: return "invalid_configuration"
+        case .notConfigured: return "not_configured"
+        case .tokenRefreshFailed: return "token_refresh_failed"
+        }
+    }
+
+    public var statusCode: Int? {
+        switch self {
+        case .http(let status, _, _, _): return status
+        case .rateLimited: return 429
+        case .server(let status, _): return status
+        default: return nil
+        }
+    }
+
+    public var requestId: String? {
+        switch self {
+        case .http(_, _, _, let requestId): return requestId
+        default: return nil
+        }
+    }
+
+    public var errorDescription: String? {
+        switch self {
+        case .network(let message): return message
+        case .http(_, _, let message, _): return message
+        case .decoding(let message): return "Decoding error: \(message)"
+        case .encoding(let message): return "Encoding error: \(message)"
+        case .rateLimited(let retryAfter):
+            return retryAfter.map { "Rate limited. Retry after \($0)s." } ?? "Rate limited."
+        case .server(_, let message): return message
+        case .invalidConfiguration(let message): return message
+        case .notConfigured: return "Palbase SDK not configured. Call PalbaseSDK.configure(apiKey:) first."
+        case .tokenRefreshFailed(let message): return message
+        }
+    }
+}
+
+// MARK: - HTTP error envelope (internal — used by HttpClient and module errors)
+
+/// Represents the error JSON returned by the Palbase server.
+/// Modules use this to map server errors to their own error cases.
+public struct PalbaseErrorEnvelope: Sendable, Decodable {
+    public let code: String
+    public let message: String
+    public let status: Int
+    public let requestId: String?
+    public let details: [String: String]?
+
+    enum CodingKeys: String, CodingKey {
+        case code = "error"
+        case message = "error_description"
+        case status
+        case requestId = "request_id"
+        case details
+    }
 }

@@ -1,34 +1,10 @@
 import Foundation
 
-public struct PalbaseResponse<T: Sendable>: Sendable {
-    public let data: T?
-    public let error: PalbaseError?
-    public let status: Int
-    public let count: Int?
-
-    public init(data: T? = nil, error: PalbaseError? = nil, status: Int = 0, count: Int? = nil) {
-        self.data = data
-        self.error = error
-        self.status = status
-        self.count = count
-    }
-}
-
-public struct PalbaseConfig: Sendable {
-    public let apiKey: String
-    public let url: String?
-    public let headers: [String: String]
-
-    public init(apiKey: String, url: String? = nil, headers: [String: String] = [:]) {
-        self.apiKey = apiKey
-        self.url = url
-        self.headers = headers
-    }
-}
-
+/// User authentication session — access + refresh tokens with expiry.
 public struct Session: Sendable, Equatable, Codable {
     public let accessToken: String
     public let refreshToken: String
+    /// Unix timestamp (seconds) when the access token expires.
     public let expiresAt: Int64
 
     public init(accessToken: String, refreshToken: String, expiresAt: Int64) {
@@ -43,6 +19,7 @@ public struct Session: Sendable, Equatable, Codable {
     }
 }
 
+/// Auth state events emitted by `TokenManager`.
 public enum AuthStateEvent: Sendable {
     case sessionSet
     case sessionCleared
@@ -50,4 +27,6 @@ public enum AuthStateEvent: Sendable {
 }
 
 public typealias AuthStateCallback = @Sendable (AuthStateEvent, Session?) -> Void
+
+/// Returned by listener registration. Call to stop receiving events.
 public typealias Unsubscribe = @Sendable () -> Void

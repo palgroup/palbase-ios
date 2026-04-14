@@ -1,27 +1,24 @@
 import Foundation
-@_exported import PalbaseCore
+import PalbaseCore
 
-public actor PalbaseLinksClient {
-    private let http: HttpClient
+/// Palbase Links module entry point. Use `PalbaseLinks.shared` after `PalbaseSDK.configure(_:)`.
+public struct PalbaseLinks: Sendable {
+    private let http: HTTPRequesting
     private let tokens: TokenManager
 
-    /// Direct construction — for granular module-only usage.
-    public init(apiKey: String, options: HttpClientOptions = .init()) {
-        let http = HttpClient(apiKey: apiKey, options: options)
-        let tokens = TokenManager()
+    package init(http: HTTPRequesting, tokens: TokenManager) {
         self.http = http
         self.tokens = tokens
-        Task { await http.setTokenManager(tokens) }
     }
 
-    /// Internal — used by `PalbaseClient` umbrella to share HttpClient/TokenManager.
-    public init(sharedHttp: HttpClient, sharedTokens: TokenManager) {
-        self.http = sharedHttp
-        self.tokens = sharedTokens
+    /// Shared client backed by the global SDK configuration.
+    public static var shared: PalbaseLinks {
+        get throws {
+            let http = try PalbaseSDK.requireHTTP()
+            let tokens = try PalbaseSDK.requireTokens()
+            return PalbaseLinks(http: http, tokens: tokens)
+        }
     }
-
-    public var httpClient: HttpClient { http }
-    public var tokenManager: TokenManager { tokens }
 
     // TODO: Implement Links API
 }

@@ -12,51 +12,64 @@ import Foundation
 @_exported import PalbaseLinks
 @_exported import PalbaseCms
 
-/// Umbrella client. All modules share a single HttpClient and TokenManager.
+/// Convenience accessor that exposes all module clients as namespaced properties.
+/// Useful when you want one symbol that's "the SDK".
 ///
 /// ```swift
-/// let palbase = PalbaseClient(apiKey: "pb_abc123_xxx")
-/// let result = await palbase.auth.signIn(email: "...", password: "...")
+/// PalbaseSDK.configure(apiKey: "pb_abc123_xxx")
+///
+/// let palbase = Palbase()
+/// try await palbase.auth.signIn(email: "...", password: "...")
 /// ```
 ///
-/// For smaller binaries, use granular modules instead:
+/// Equivalent to using each module's `.shared`:
 /// ```swift
-/// let auth = PalbaseAuthClient(apiKey: "pb_abc123_xxx")
+/// try await PalbaseAuth.shared.signIn(...)
 /// ```
-public final class PalbaseClient: Sendable {
-    public let http: HttpClient
-    public let tokens: TokenManager
+public struct Palbase: Sendable {
+    public init() {}
 
-    public let auth: PalbaseAuthClient
-    public let db: PalbaseDBClient
-    public let docs: PalbaseDocsClient
-    public let storage: PalbaseStorageClient
-    public let realtime: PalbaseRealtimeClient
-    public let functions: PalbaseFunctionsClient
-    public let flags: PalbaseFlagsClient
-    public let notifications: PalbaseNotificationsClient
-    public let analytics: PalbaseAnalyticsClient
-    public let links: PalbaseLinksClient
-    public let cms: PalbaseCmsClient
+    public var auth: PalbaseAuth {
+        get throws { try PalbaseAuth.shared }
+    }
 
-    public init(apiKey: String, options: HttpClientOptions = .init()) {
-        let http = HttpClient(apiKey: apiKey, options: options)
-        let tokens = TokenManager()
+    public var db: PalbaseDB {
+        get throws { try PalbaseDB.shared }
+    }
 
-        self.http = http
-        self.tokens = tokens
-        self.auth = PalbaseAuthClient(sharedHttp: http, sharedTokens: tokens)
-        self.db = PalbaseDBClient(sharedHttp: http, sharedTokens: tokens)
-        self.docs = PalbaseDocsClient(sharedHttp: http, sharedTokens: tokens)
-        self.storage = PalbaseStorageClient(sharedHttp: http, sharedTokens: tokens)
-        self.realtime = PalbaseRealtimeClient(sharedHttp: http, sharedTokens: tokens)
-        self.functions = PalbaseFunctionsClient(sharedHttp: http, sharedTokens: tokens)
-        self.flags = PalbaseFlagsClient(sharedHttp: http, sharedTokens: tokens)
-        self.notifications = PalbaseNotificationsClient(sharedHttp: http, sharedTokens: tokens)
-        self.analytics = PalbaseAnalyticsClient(sharedHttp: http, sharedTokens: tokens)
-        self.links = PalbaseLinksClient(sharedHttp: http, sharedTokens: tokens)
-        self.cms = PalbaseCmsClient(sharedHttp: http, sharedTokens: tokens)
+    public var docs: PalbaseDocs {
+        get throws { try PalbaseDocs.shared }
+    }
 
-        Task { await http.setTokenManager(tokens) }
+    public var storage: PalbaseStorage {
+        get throws { try PalbaseStorage.shared }
+    }
+
+    public var realtime: PalbaseRealtime {
+        get throws { try PalbaseRealtime.shared }
+    }
+
+    public var functions: PalbaseFunctions {
+        get throws { try PalbaseFunctions.shared }
+    }
+
+    public var flags: PalbaseFlags {
+        get throws { try PalbaseFlags.shared }
+    }
+
+    public var notifications: PalbaseNotifications {
+        get throws { try PalbaseNotifications.shared }
+    }
+
+    public var analytics: PalbaseAnalytics {
+        get throws { try PalbaseAnalytics.shared }
+    }
+
+    public var links: PalbaseLinks {
+        get throws { try PalbaseLinks.shared }
+    }
+
+    public var cms: PalbaseCms {
+        get throws { try PalbaseCms.shared }
     }
 }

@@ -1,139 +1,103 @@
 import Foundation
-@_exported import PalbaseCore
+import PalbaseCore
 
-public actor PalbaseAuthClient {
-    private let http: HttpClient
+/// Auth module entry point. Use `PalbaseAuth.shared` after calling `PalbaseSDK.configure(apiKey:)`.
+public struct PalbaseAuth: Sendable {
+    private let http: HTTPRequesting
     private let tokens: TokenManager
 
-    /// Direct construction — for granular module-only usage.
-    /// ```swift
-    /// let auth = PalbaseAuthClient(apiKey: "pb_abc123_xxx")
-    /// ```
-    public init(apiKey: String, options: HttpClientOptions = .init()) {
-        let http = HttpClient(apiKey: apiKey, options: options)
-        let tokens = TokenManager()
+    /// Internal — used by `.shared` and tests.
+    package init(http: HTTPRequesting, tokens: TokenManager) {
         self.http = http
         self.tokens = tokens
-        Task { await http.setTokenManager(tokens) }
     }
 
-    /// Internal — used by `PalbaseClient` umbrella to share HttpClient/TokenManager.
-    public init(sharedHttp: HttpClient, sharedTokens: TokenManager) {
-        self.http = sharedHttp
-        self.tokens = sharedTokens
+    /// Shared auth client backed by the global SDK configuration.
+    /// Trapping access if `PalbaseSDK.configure(_:)` was not called.
+    public static var shared: PalbaseAuth {
+        get throws {
+            let http = try PalbaseSDK.requireHTTP()
+            let tokens = try PalbaseSDK.requireTokens()
+            return PalbaseAuth(http: http, tokens: tokens)
+        }
     }
-
-    // MARK: - Public properties (read-only access for advanced cases)
-
-    public var httpClient: HttpClient { http }
-    public var tokenManager: TokenManager { tokens }
 
     // MARK: - Core Auth
 
     /// Create a new user with email and password.
-    public func signUp(email: String, password: String) async -> PalbaseResponse<AuthSuccess> {
-        let creds = SignUpCredentials(email: email, password: password)
-        let response = await http.request(
-            "POST",
-            path: "/auth/signup",
-            body: creds,
-            decoding: AuthResultDTO.self
-        )
-
-        return await handleAuthResult(response)
+    /// On success, the returned session is automatically stored and refresh is wired.
+    @discardableResult
+    public func signUp(email: String, password: String) async throws -> AuthSuccess {
+        try await performAuth(path: "/auth/signup", body: SignUpCredentials(email: email, password: password))
     }
 
     /// Sign in with email and password.
-    public func signIn(email: String, password: String) async -> PalbaseResponse<AuthSuccess> {
-        let creds = SignInCredentials(email: email, password: password)
-        let response = await http.request(
-            "POST",
-            path: "/auth/login",
-            body: creds,
-            decoding: AuthResultDTO.self
-        )
-
-        return await handleAuthResult(response)
-    }
-
-    /// Sign out the current user. Clears the local session.
     @discardableResult
-    public func signOut() async -> PalbaseResponse<EmptyResponse> {
-        let response = await http.requestVoid("POST", path: "/auth/logout")
-        await tokens.clearSession()
-        return response
+    public func signIn(email: String, password: String) async throws -> AuthSuccess {
+        try await performAuth(path: "/auth/login", body: SignInCredentials(email: email, password: password))
     }
 
-    /// Fetch the current user from the server. Requires active session.
-    public func getUser() async -> PalbaseResponse<User> {
-        struct UserResponseDTO: Decodable {
-            let user: UserInfoDTO
-        }
-
-        let response = await http.request(
-            "GET",
-            path: "/auth/user",
-            decoding: UserResponseDTO.self
-        )
-
-        if let dto = response.data {
-            let user = User(
-                id: dto.user.id,
-                email: dto.user.email,
-                emailVerified: dto.user.emailVerified,
-                createdAt: dto.user.createdAt,
-                updatedAt: dto.user.createdAt
-            )
-            return PalbaseResponse(data: user, error: nil, status: response.status)
-        }
-        return PalbaseResponse(data: nil, error: response.error, status: response.status)
+    /// Sign out the current user. Always clears the local session, even if the
+    /// server call fails.
+    public func signOut() async throws {
+        defer { Task { await tokens.clearSession() } }
+        try await http.requestVoid(method: "POST", path: "/auth/logout", body: nil, headers: [:])
     }
 
-    // MARK: - Private helpers
+    /// Fetch the currently authenticated user from the server.
+    public func getUser() async throws -> User {
+        let dto: UserResponseDTO
+        do {
+            dto = try await http.request(method: "GET", path: "/auth/user", body: nil, headers: [:])
+        } catch let core as PalbaseCoreError {
+            throw mapAuthError(core)
+        }
+        return dto.toUser()
+    }
 
-    private func handleAuthResult(_ response: PalbaseResponse<AuthResultDTO>) async -> PalbaseResponse<AuthSuccess> {
-        guard let dto = response.data else {
-            return PalbaseResponse(data: nil, error: response.error, status: response.status)
+    // MARK: - Private
+
+    private func performAuth(path: String, body: any Encodable & Sendable) async throws -> AuthSuccess {
+        let dto: AuthResultDTO
+        do {
+            dto = try await http.request(method: "POST", path: path, body: body, headers: [:])
+        } catch let core as PalbaseCoreError {
+            throw mapAuthError(core)
         }
 
         let session = dto.toSession()
         let user = dto.toUser()
-
         await tokens.setSession(session)
-        await wireRefreshFunction()
+        await wireRefresh()
 
-        return PalbaseResponse(
-            data: AuthSuccess(user: user, session: session),
-            error: nil,
-            status: response.status
-        )
+        return AuthSuccess(user: user, session: session)
     }
 
-    /// Wires the refresh function into TokenManager so HttpClient auto-refreshes on expiry.
-    private func wireRefreshFunction() async {
-        let client = http
+    private func wireRefresh() async {
+        let httpRef = http
         let fn: RefreshFunction = { refreshToken in
-            struct RefreshBody: Encodable {
+            struct RefreshBody: Encodable, Sendable {
                 let refreshToken: String
-                enum CodingKeys: String, CodingKey {
-                    case refreshToken = "refresh_token"
-                }
             }
-
-            let body = RefreshBody(refreshToken: refreshToken)
-            let response = await client.request(
-                "POST",
+            let dto: AuthResultDTO = try await httpRef.request(
+                method: "POST",
                 path: "/auth/refresh",
-                body: body,
-                decoding: AuthResultDTO.self
+                body: RefreshBody(refreshToken: refreshToken),
+                headers: [:]
             )
-
-            if let dto = response.data {
-                return dto.toSession()
-            }
-            throw response.error ?? PalbaseError(code: "refresh_failed", message: "Failed to refresh session")
+            return dto.toSession()
         }
-
         await tokens.setRefreshFunction(fn)
+    }
+
+    /// Map transport-level core error to auth-specific error if the server envelope matches.
+    private func mapAuthError(_ core: PalbaseCoreError) -> Error {
+        if case .http(_, _, _, _) = core {
+            // Server sends a structured envelope on 4xx — but PalbaseCoreError already lost
+            // the parsed envelope. We surface as transport for now; module-specific mapping
+            // happens server-side via well-known error codes.
+            return AuthError.transport(core)
+        }
+        return AuthError.transport(core)
     }
 }

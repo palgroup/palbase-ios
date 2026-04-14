@@ -2,178 +2,197 @@
 
 ## Project
 
-Native Swift SDK for Palbase, distributed via Swift Package Manager. Source-only, no XCFramework, no KMP.
+Native Swift SDK for Palbase. Source-only SPM, multi-product (Firebase-style granular).
+No KMP, no XCFramework, no third-party dependencies.
 
 ## Structure
 
 ```
 palbase-ios/
-├── Package.swift              → Multi-product SPM manifest (Firebase-style)
+├── Package.swift              → Multi-product manifest, swiftLanguageModes: [.v6]
+├── .swift-format              → Format config (swift-format)
 ├── Sources/
-│   ├── PalbaseCore/           → HttpClient, TokenManager, errors, types
-│   ├── PalbaseAuth/           → Auth module
-│   ├── PalbaseDB/             → Relational DB (PostgREST)
-│   ├── PalbaseDocs/           → Document DB
-│   ├── PalbaseStorage/        → File storage
-│   ├── PalbaseRealtime/       → WebSocket subscriptions
-│   ├── PalbaseFunctions/      → Edge function invoke
-│   ├── PalbaseFlags/          → Feature flags
-│   ├── PalbaseNotifications/  → Push/email/SMS
-│   ├── PalbaseAnalytics/      → Event tracking
-│   ├── PalbaseLinks/          → Deep links
-│   ├── PalbaseCms/            → Content mgmt
-│   └── Palbase/               → Umbrella — re-exports all, PalbaseClient
+│   ├── PalbaseCore/           → SDK foundation (PalbaseSDK, HttpClient, TokenManager)
+│   ├── PalbaseAuth/           → AuthError, PalbaseAuth.shared
+│   ├── PalbaseDB/             → relational DB (PostgREST)
+│   ├── PalbaseDocs/           → document DB
+│   ├── PalbaseStorage/        → file storage
+│   ├── PalbaseRealtime/       → WebSocket
+│   ├── PalbaseFunctions/      → edge functions
+│   ├── PalbaseFlags/          → feature flags
+│   ├── PalbaseNotifications/  → push/email/sms
+│   ├── PalbaseAnalytics/      → event tracking
+│   ├── PalbaseLinks/          → deep links
+│   ├── PalbaseCms/            → content
+│   └── Palbase/               → umbrella (re-exports + Palbase struct)
 └── Tests/
-    └── PalbaseCoreTests/      → Core unit tests
+    └── PalbaseCoreTests/      → Swift Testing (@Test, @Suite)
 ```
 
-Every module (except umbrella) depends only on `PalbaseCore`. Users install granularly.
+## API Architecture
 
-## Language & Toolchain
+### User-facing surface
 
-- **Swift 6.0** — strict concurrency enabled via `swiftLanguageModes: [.v6]`
-- **Platforms**: iOS 15+, macOS 13+, tvOS 15+, watchOS 8+
-- **Foundation only** — no third-party dependencies
-- **URLSession** for HTTP (not Alamofire/etc)
-- **async/await** for all async APIs (no completion handlers)
-- **actor** for shared mutable state
-- **Sendable** on all public types
+- **`PalbaseSDK.configure(apiKey:)`** — call once at app startup
+- **`PalbaseAuth.shared`** (and other `.shared`) — primary access point per module
+- **`Palbase()`** — umbrella convenience for `palbase.auth.signIn(...)` syntax
+- All async methods are **`async throws`** — typed errors per module
+- Each module has its own `Error` enum implementing `PalbaseError` protocol
 
-## Response Contract
+### Internal surface (hidden from users)
 
-All module methods return `PalbaseResponse<T>`. API errors (4xx/5xx) do NOT throw:
+- **`HttpClient`, `TokenManager`, `HTTPRequesting`, `RequestInterceptor`** — `package` access
+  - Visible to all modules in this SPM package
+  - **NOT** visible to consumers of the SDK
+  - Module clients use these via `PalbaseSDK.requireHTTP()` / `requireTokens()`
+- DTO structs (request/response wire format) — `internal` (file-scoped via no modifier)
+- Helper functions, type-erasure helpers — `internal` or `private`
+
+### Visibility checklist (audit before every PR)
+
+1. Anything user calls → `public`
+2. Anything modules pass between each other → `package`
+3. Anything inside one module → `internal` (default, no modifier)
+4. Anything inside one file → `private` or `fileprivate`
+5. **Default to most restrictive that compiles.** When in doubt, start `internal`.
+
+## Core Patterns
+
+### Errors
 
 ```swift
-public struct PalbaseResponse<T: Sendable>: Sendable {
-    public let data: T?
-    public let error: PalbaseError?
-    public let status: Int
-    public let count: Int?
+public protocol PalbaseError: Error, Sendable, LocalizedError {
+    var code: String { get }              // snake_case stable identifier
+    var statusCode: Int? { get }          // HTTP status if applicable
+    var requestId: String? { get }        // server-side trace ID
+}
+
+// Each module:
+public enum AuthError: PalbaseError {
+    case invalidCredentials
+    case userNotFound
+    case mfaRequired(challengeId: String)
+    case transport(PalbaseCoreError)      // wrap transport errors
+    case server(code: String, message: String, requestId: String?)
 }
 ```
 
-Non-API errors (e.g., missing refresh token, encoding failure) throw `PalbaseError`.
+Map server JSON envelope `{ error, error_description, request_id }` to typed cases via
+`AuthError.from(envelope:)` static helper.
 
-## API Design
-
-### Naming
-
-- Swift-native naming, not TS-ish (e.g., `signIn(email:password:)` not `signIn(credentials:)`)
-- Use named parameters for clarity: `auth.signIn(email: "...", password: "...")`
-- No `Palbase` prefix on types inside module (`User`, not `PalbaseUser`) — module name is the namespace
-- Client types get `Palbase` prefix to avoid collision at call site (`PalbaseAuthClient`)
-
-### Mirror TS SDK
-
-API surface should mirror `palbase-ts` where possible. When TS does:
-```ts
-palbase.auth.signIn({ email, password })
-```
-Swift does:
-```swift
-await palbase.auth.signIn(email: "...", password: "...")
-```
-
-### Wire format
-
-Server returns snake_case. Use `CodingKeys` to map to camelCase Swift types.
-Keep DTO structs internal (`struct UserInfoDTO: Decodable`) and convert to public types.
-
-## Concurrency
-
-### actor vs final class
-
-- **Shared mutable state** → `actor`
-  - `HttpClient`, `TokenManager`, per-module clients that hold state
-- **Stateless or init-only immutable** → `final class: Sendable` with all `let` properties
-  - `PalbaseClient` (umbrella) — holds references but doesn't mutate after init
-
-### Retain cycles
-
-Callback API for listeners is primary. Document `[weak self]` requirement loudly in doc comments:
+### Module client pattern
 
 ```swift
-/// > Warning: Capture `self` weakly in the closure to avoid retain cycles:
-/// > ```swift
-/// > client.tokens.onAuthStateChange { [weak self] event, session in ... }
-/// > ```
+public struct PalbaseAuth: Sendable {           // struct, not actor
+    private let http: HTTPRequesting             // package type
+    private let tokens: TokenManager             // package type
+
+    package init(http: HTTPRequesting, tokens: TokenManager) {
+        self.http = http
+        self.tokens = tokens
+    }
+
+    public static var shared: PalbaseAuth {
+        get throws {
+            let http = try PalbaseSDK.requireHTTP()
+            let tokens = try PalbaseSDK.requireTokens()
+            return PalbaseAuth(http: http, tokens: tokens)
+        }
+    }
+
+    public func signIn(email: String, password: String) async throws -> AuthSuccess { ... }
+}
 ```
 
-Inside library code, always `[weak self]` in escaping closures that capture `self`.
+- **`struct` not `actor`** — module clients are stateless wrappers, no shared mutable state
+- **`package init`** — only umbrella/SDK can construct, users use `.shared`
+- **`shared` is `throws`** — fails fast if `PalbaseSDK.configure(_:)` not called
 
-### Task management
+### HTTP
 
-Library does not spawn detached Tasks that outlive requests. If needed for event delivery,
-Task is short-lived and doesn't capture strong `self`.
+Use `JSONEncoder.palbaseDefault` / `JSONDecoder.palbaseDefault` — they handle snake_case
+conversion automatically. **Do not write `CodingKeys` for casing** — let the decoder strategy
+handle it.
 
-## HTTP Client
+```swift
+struct AuthResultDTO: Decodable, Sendable {
+    let accessToken: String      // matches "access_token" automatically
+    let refreshToken: String
+    let expiresIn: Int
+    let user: UserInfoDTO
+}
+```
 
-- `HttpClient` is an `actor`
-- `request(_:path:body:headers:decoding:)` — generic decodable response
-- `requestVoid(...)` — for 204 No Content / empty body
-- Auto-retry: 3 attempts, exponential backoff (200ms base)
-- 429 handling: respects `Retry-After` header
-- Interceptors: `@Sendable (inout URLRequest) async throws -> Void`
+Only write `CodingKeys` for non-trivial mappings (`error_description` → `message`).
 
-## Auth Token Flow
+### Concurrency
 
-1. `auth.signIn/signUp` → receives `AuthResult` from server
-2. `AuthClient.handleAuthResult` → calls `tokens.setSession(...)`
-3. `AuthClient.wireRefreshFunction` → installs closure into `TokenManager.refreshFunction`
-4. On next request, if `tokens.isExpired` → `HttpClient` auto-calls `refreshSession()`
-5. Concurrent refresh calls collapse into one via `refreshTask`
+- `actor` for things with shared mutable state (`HttpClient`, `TokenManager`)
+- `struct: Sendable` for stateless module clients
+- `final class: Sendable` only when reference semantics needed (`State` container)
+- All escaping closures `@Sendable`
+- All `Task` blocks that capture `self` use `[weak self]`
+- Strict concurrency enforced via `swiftLanguageModes: [.v6]`
+
+## Configuration
+
+```swift
+public struct PalbaseConfig: Sendable {
+    public let apiKey: String
+    public let url: String?                 // base URL override
+    public let serviceRoleKey: String?      // server-side bypass token
+    public let headers: [String: String]
+    public let urlSession: URLSession       // injectable for tests
+    public let tokenStorage: TokenStorage   // protocol — InMemory or Keychain
+    public let requestTimeout: TimeInterval
+    public let maxRetries: Int
+    public let initialBackoffMs: UInt64
+}
+```
+
+`PalbaseSDK.configure(apiKey:)` shorthand uses defaults. `PalbaseSDK.configure(_:)` accepts
+full config.
 
 ## Testing
 
-- Use `XCTest` for unit tests (until Swift Testing is universally available)
-- `actor` helpers for thread-safe assertion collection (e.g., `ReceivedBox`)
-- Test retain cycles explicitly: assert listener count reaches 0 after unsubscribe
-- For HTTP, inject custom `URLSession` with `URLProtocol` mocks
-- Every public method: happy path + error path minimum
+- **Swift Testing** (`import Testing`, `@Test`, `@Suite`, `#expect`) — not XCTest
+- Place tests under `Tests/{Module}Tests/`
+- Use `@testable import` to access internal/package symbols
+- `actor` helpers for thread-safe state (`actor ReceivedEvents { var events: [Event] }`)
+- Mock HTTP via custom `URLProtocol` and inject via `PalbaseConfig.urlSession`
 
-Test layout:
-```
-Tests/
-└── PalbaseCoreTests/
-    ├── PalbaseCoreTests.swift            → basic types, parsers
-    └── TokenManagerRetainCycleTests.swift → lifecycle, listener cleanup
+```swift
+@Suite("PalbaseCore basics")
+struct CoreTests {
+    @Test("description")
+    func methodName() async throws {
+        #expect(actual == expected)
+    }
+}
 ```
 
 ## Build & Verify
 
 ```bash
-swift build                  # must succeed with no warnings
-swift test                   # all green
+swift build      # must succeed with no warnings
+swift test       # all green
+swift-format -i -r Sources/  # auto-format
 ```
 
-Lokal dev:
-```bash
-cd palbase-ios
-swift build
-swift test
-```
+## Refactor Roadmap
 
-Xcode için: Package.swift'i direkt aç, Xcode SPM projesi olarak tanır.
-
-## Distribution
-
-- Source-only SPM — no binary, no XCFramework
-- User import: `https://github.com/palgroup/palbase-ios`, version semver tag
-- Tag `0.x.y` (no `v` prefix) — SPM reads semver tags directly
-
-## CI (TODO)
-
-- `on: push to main` → `swift build && swift test` on macOS runner
-- `on: push tags '*.*.*'` → tag the release (no publish step needed, SPM pulls from git)
+See main project for the 51-item refactor list. Phase 1 (R1-R17) done.
+Next phases: full Auth (Phase 2), DB query builder (Phase 3), etc.
 
 ## Do NOT
 
-- Use completion handlers — async/await only
-- Use third-party HTTP (Alamofire, Moya, etc.) — Foundation URLSession
-- Block main thread — everything async
-- Leak `self` in closures
-- Store tokens in UserDefaults — `Keychain` when TokenStorage is added
-- Use `any` type — strong typing always
-- Mix Swift concurrency with DispatchQueue — pure Task/actor
-- Throw for API (4xx/5xx) errors — return `PalbaseResponse` with `.error` populated
-- Add features without matching test — every public method needs at least one test
+- Use completion handlers — `async throws` only
+- Use `URLSession.shared.dataTask` — `URLSession.data(for:)` async API
+- Use third-party HTTP libraries — Foundation only
+- Mark anything `public` if `package` or `internal` works
+- Write `CodingKeys` just for snake_case — use `palbaseDefault` decoder
+- Leak `self` in escaping closures
+- Mix `Task`/actors with `DispatchQueue`
+- Throw generic `Error` from public API — use a typed `PalbaseError`-conforming enum
+- Add a public method without a corresponding test
+- Create new `actor` for stateless types — use `struct: Sendable`

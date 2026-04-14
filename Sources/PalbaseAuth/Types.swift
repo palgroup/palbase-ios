@@ -22,55 +22,45 @@ public struct AuthSuccess: Sendable {
     public let session: Session
 }
 
-public struct SignUpCredentials: Sendable, Codable {
-    public let email: String
-    public let password: String
+// MARK: - Internal request/response DTOs
 
-    public init(email: String, password: String) {
-        self.email = email
-        self.password = password
-    }
+struct SignUpCredentials: Encodable, Sendable {
+    let email: String
+    let password: String
 }
 
-public struct SignInCredentials: Sendable, Codable {
-    public let email: String
-    public let password: String
-
-    public init(email: String, password: String) {
-        self.email = email
-        self.password = password
-    }
+struct SignInCredentials: Encodable, Sendable {
+    let email: String
+    let password: String
 }
 
-// MARK: - Internal wire format
-
-struct UserInfoDTO: Decodable {
+struct UserInfoDTO: Decodable, Sendable {
     let id: String
     let email: String
     let emailVerified: Bool
     let createdAt: String
+}
 
-    enum CodingKeys: String, CodingKey {
-        case id, email
-        case emailVerified = "email_verified"
-        case createdAt = "created_at"
+struct UserResponseDTO: Decodable, Sendable {
+    let user: UserInfoDTO
+
+    func toUser() -> User {
+        User(
+            id: user.id,
+            email: user.email,
+            emailVerified: user.emailVerified,
+            createdAt: user.createdAt,
+            updatedAt: user.createdAt
+        )
     }
 }
 
-struct AuthResultDTO: Decodable {
+struct AuthResultDTO: Decodable, Sendable {
     let accessToken: String
     let refreshToken: String
     let tokenType: String
     let expiresIn: Int
     let user: UserInfoDTO
-
-    enum CodingKeys: String, CodingKey {
-        case accessToken = "access_token"
-        case refreshToken = "refresh_token"
-        case tokenType = "token_type"
-        case expiresIn = "expires_in"
-        case user
-    }
 
     func toSession() -> Session {
         let expiresAt = Int64(Date().timeIntervalSince1970) + Int64(expiresIn)

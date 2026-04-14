@@ -2,31 +2,41 @@ import Foundation
 
 public typealias RefreshFunction = @Sendable (String) async throws -> Session
 
-public actor TokenManager {
-    private var session: Session?
+package actor TokenManager {
+    private let storage: TokenStorage
+    private var cachedSession: Session?
     private var listeners: [UUID: AuthStateCallback] = [:]
     private var refreshTask: Task<Session, Error>?
 
-    public var refreshFunction: RefreshFunction?
+    package var refreshFunction: RefreshFunction?
 
-    public init() {}
+    package init(storage: TokenStorage = InMemoryTokenStorage()) {
+        self.storage = storage
+    }
 
-    public var accessToken: String? { session?.accessToken }
-    public var refreshToken: String? { session?.refreshToken }
-    public var currentSession: Session? { session }
+    /// Hydrate from persistent storage. Call once at SDK startup.
+    public func loadFromStorage() async {
+        cachedSession = await storage.load()
+    }
+
+    public var accessToken: String? { cachedSession?.accessToken }
+    public var refreshToken: String? { cachedSession?.refreshToken }
+    public var currentSession: Session? { cachedSession }
 
     public var isExpired: Bool {
-        guard let session = session else { return true }
+        guard let session = cachedSession else { return true }
         return session.isExpired
     }
 
-    public func setSession(_ session: Session) {
-        self.session = session
+    public func setSession(_ session: Session) async {
+        cachedSession = session
+        await storage.save(session)
         notify(.sessionSet, session)
     }
 
-    public func clearSession() {
-        session = nil
+    public func clearSession() async {
+        cachedSession = nil
+        await storage.clear()
         notify(.sessionCleared, nil)
     }
 
@@ -34,12 +44,12 @@ public actor TokenManager {
         self.refreshFunction = fn
     }
 
-    /// Collapses concurrent refresh calls into one in-flight task.
+    /// Collapses concurrent refresh calls into a single in-flight task.
     @discardableResult
     public func refreshSession() async throws -> Session {
-        guard let refreshToken = session?.refreshToken,
+        guard let refreshToken = cachedSession?.refreshToken,
               let fn = refreshFunction else {
-            throw PalbaseError(code: "no_refresh_token", message: "No refresh token or refresh function available")
+            throw PalbaseCoreError.tokenRefreshFailed(message: "No refresh token or refresh function available")
         }
 
         if let existing = refreshTask {
@@ -49,7 +59,7 @@ public actor TokenManager {
         let task = Task<Session, Error> {
             defer { refreshTask = nil }
             let newSession = try await fn(refreshToken)
-            setSession(newSession)
+            await setSession(newSession)
             notify(.tokenRefreshed, newSession)
             return newSession
         }
@@ -58,16 +68,8 @@ public actor TokenManager {
         return try await task.value
     }
 
-    /// Subscribe to auth state changes. Returns an `Unsubscribe` closure that
-    /// you must call to stop receiving events.
-    ///
-    /// > Warning: When referencing `self` inside the closure, capture weakly
-    /// > to avoid retain cycles:
-    /// > ```swift
-    /// > await client.tokens.onAuthStateChange { [weak self] event, session in
-    /// >     self?.handleAuth(event, session)
-    /// > }
-    /// > ```
+    /// Subscribe to auth state changes.
+    /// > Warning: Capture `self` weakly in the closure to avoid retain cycles.
     @discardableResult
     public func onAuthStateChange(_ callback: @escaping AuthStateCallback) -> Unsubscribe {
         let id = UUID()
@@ -80,11 +82,7 @@ public actor TokenManager {
 
     // MARK: - Internal (testing)
 
-    internal var listenersCountForTesting: Int {
-        listeners.count
-    }
-
-    // MARK: - Private
+    var listenersCountForTesting: Int { listeners.count }
 
     private func removeListener(_ id: UUID) {
         listeners.removeValue(forKey: id)

@@ -1,21 +1,16 @@
 # Palbase iOS SDK
 
-Native Swift SDK for [Palbase](https://palbase.studio) — Backend-as-a-Service.
+Native Swift SDK for [Palbase](https://palbase.studio).
 
 - **Pure Swift**, no Kotlin bridging, no XCFramework
-- **Swift 6** with strict concurrency — full `async/await`, `Sendable`, `actor`
+- **Swift 6** with strict concurrency — `async throws`, `Sendable`, `actor`
 - **Granular modules** (Firebase-style) — install only what you need
-- Requires iOS 15+, macOS 13+, tvOS 15+, watchOS 8+
+- **Single configure point** — `PalbaseSDK.configure(apiKey:)`, then `.shared` everywhere
+- iOS 15+ / macOS 13+ / tvOS 15+ / watchOS 8+
 
 ## Installation
 
-### Swift Package Manager
-
-In Xcode: **File → Add Package Dependencies** → enter:
-
-```
-https://github.com/palgroup/palbase-ios
-```
+In Xcode: **File → Add Package Dependencies** → `https://github.com/palgroup/palbase-ios`
 
 Or in `Package.swift`:
 
@@ -30,7 +25,7 @@ targets: [
             // Option 1 — everything
             .product(name: "Palbase", package: "palbase-ios"),
 
-            // Option 2 — only what you need (smaller binary)
+            // Option 2 — granular (smaller binary)
             .product(name: "PalbaseAuth", package: "palbase-ios"),
             .product(name: "PalbaseDB", package: "palbase-ios"),
         ]
@@ -40,83 +35,111 @@ targets: [
 
 ## Quick Start
 
-### Umbrella client (all modules)
+### 1. Configure once at app startup
+
+```swift
+import PalbaseCore
+
+@main
+struct MyApp: App {
+    init() {
+        PalbaseSDK.configure(apiKey: "pb_abc123_xxx")
+    }
+    var body: some Scene { ... }
+}
+```
+
+For advanced setup (Keychain storage, custom URL, custom URLSession):
+
+```swift
+PalbaseSDK.configure(PalbaseConfig(
+    apiKey: "pb_abc123_xxx",
+    tokenStorage: KeychainTokenStorage(),  // coming soon
+    requestTimeout: 30,
+    maxRetries: 3
+))
+```
+
+### 2. Use modules via `.shared`
+
+```swift
+import PalbaseAuth
+
+do {
+    let result = try await PalbaseAuth.shared.signIn(
+        email: "user@example.com",
+        password: "secret"
+    )
+    print("Signed in: \(result.user.email)")
+} catch let error as AuthError {
+    switch error {
+    case .invalidCredentials:
+        print("Wrong password")
+    case .userNotFound:
+        print("No such user")
+    default:
+        print("Error: \(error.localizedDescription)")
+    }
+}
+```
+
+### 3. Or use the umbrella `Palbase`
 
 ```swift
 import Palbase
 
-let palbase = PalbaseClient(apiKey: "pb_abc123_xxx")
-
-// Auth
-let result = await palbase.auth.signIn(email: "user@example.com", password: "secret")
-if let auth = result.data {
-    print("Signed in as \(auth.user.email)")
-}
-
-// Database (coming)
-// let rooms = await palbase.db.from("rooms").select().execute()
-
-// Documents (coming)
-// let doc = await palbase.docs.collection("users").document("user1").get()
+let palbase = Palbase()
+let result = try await palbase.auth.signIn(email: "...", password: "...")
+let rooms = try await palbase.db.from("rooms").select().execute()  // coming soon
 ```
 
-### Granular modules
+## Error Handling
+
+All public methods `throw`. Each module defines its own typed error enum implementing `PalbaseError`:
 
 ```swift
-import PalbaseCore
-import PalbaseAuth
+public protocol PalbaseError: Error, Sendable, LocalizedError {
+    var code: String { get }
+    var statusCode: Int? { get }
+    var requestId: String? { get }
+}
 
-let http = HttpClient(apiKey: "pb_abc123_xxx")
-let tokens = TokenManager()
-await http.setTokenManager(tokens)
-
-let auth = PalbaseAuthClient(http: http, tokens: tokens)
-let result = await auth.signIn(email: "...", password: "...")
+public enum AuthError: PalbaseError {
+    case invalidCredentials
+    case userNotFound
+    case emailAlreadyInUse
+    case mfaRequired(challengeId: String)
+    case transport(PalbaseCoreError)
+    // ...
+}
 ```
 
-## Modules
-
-| Module | Status | Description |
-|--------|--------|-------------|
-| `PalbaseCore` | ✅ | HttpClient, TokenManager, errors, types |
-| `PalbaseAuth` | ✅ | Email/password sign in, sign up, sign out, get user |
-| `PalbaseDB` | 🚧 | Relational database (PostgREST) |
-| `PalbaseDocs` | 🚧 | Document database (Firestore-like) |
-| `PalbaseStorage` | 🚧 | File storage |
-| `PalbaseRealtime` | 🚧 | WebSocket subscriptions |
-| `PalbaseFunctions` | 🚧 | Edge functions |
-| `PalbaseFlags` | 🚧 | Feature flags |
-| `PalbaseNotifications` | 🚧 | Push / email / SMS |
-| `PalbaseAnalytics` | 🚧 | Event tracking |
-| `PalbaseLinks` | 🚧 | Deep linking |
-| `PalbaseCms` | 🚧 | Content management |
-
-## Response Format
-
-All API calls return `PalbaseResponse<T>`. API errors do **not** throw — check `.error`:
+Use `do/catch` with pattern matching:
 
 ```swift
-let response = await palbase.auth.signIn(email: "...", password: "...")
-if let error = response.error {
-    print("Error: \(error.code) — \(error.message)")
-    return
+do {
+    try await PalbaseAuth.shared.signIn(email: email, password: pass)
+} catch AuthError.invalidCredentials {
+    showError("Wrong credentials")
+} catch AuthError.mfaRequired(let challengeId) {
+    promptMfa(challengeId)
+} catch let error as PalbaseError {
+    showError(error.localizedDescription)
 }
-let auth = response.data!  // type-safe, guaranteed non-nil when error is nil
 ```
-
-Only non-HTTP errors throw (e.g., `TokenManager.refreshSession()` throws if no refresh token).
 
 ## Auth State Changes
 
-Listen to auth state with a callback. **Capture `self` weakly** to avoid retain cycles:
+Listen to auth events. **Capture `self` weakly** to avoid retain cycles:
 
 ```swift
 class AuthViewModel {
     private var unsubscribe: Unsubscribe?
 
-    init(client: PalbaseClient) {
+    init() {
         Task {
-            self.unsubscribe = await client.tokens.onAuthStateChange { [weak self] event, session in
+            guard let tokens = PalbaseSDK.tokens else { return }
+            self.unsubscribe = await tokens.onAuthStateChange { [weak self] event, session in
                 self?.handleAuthChange(event, session)
             }
         }
@@ -128,29 +151,42 @@ class AuthViewModel {
 }
 ```
 
-The `Unsubscribe` closure is returned — call it when you no longer want events.
-
 ## Token Refresh
 
-Once you call `signIn` / `signUp`, auto-refresh is wired. If the access token expires,
-`HttpClient` will refresh it transparently before the next request.
+Auto-refresh is wired after first `signIn`/`signUp`. If the access token expires, the next
+HTTP request transparently refreshes it. Concurrent refreshes are collapsed into one request.
 
-Concurrent refresh calls are collapsed into a single request.
+## Concurrency
 
-## Concurrency Model
-
-- `HttpClient` and `TokenManager` are `actor` types — thread-safe by construction
+- `HttpClient` and `TokenManager` are `actor`s — thread-safe by construction
 - All public types are `Sendable`
-- Built for Swift 6 strict concurrency (`swiftLanguageModes: [.v6]`)
-
-Access the client from any Task or thread. For UI updates, hop to `@MainActor`:
+- Module clients are `struct` — cheap to create, value semantics
+- `PalbaseSDK` global state is protected by `NSLock`
 
 ```swift
+// Safe from any context
 Task { @MainActor in
-    let result = await palbase.auth.signIn(email: "...", password: "...")
-    self.isLoggedIn = result.data != nil
+    let result = try await PalbaseAuth.shared.signIn(email: e, password: p)
+    self.isLoggedIn = true
 }
 ```
+
+## Modules
+
+| Module | Status | Description |
+|--------|--------|-------------|
+| `PalbaseCore` | ✅ | `PalbaseSDK`, `Session`, `PalbaseError` protocol, `TokenStorage` |
+| `PalbaseAuth` | ✅ | `signUp`, `signIn`, `signOut`, `getUser`, auto-refresh |
+| `PalbaseDB` | 🚧 | Relational DB (PostgREST query builder) |
+| `PalbaseDocs` | 🚧 | Document DB (Firestore-like) |
+| `PalbaseStorage` | 🚧 | File storage with progress |
+| `PalbaseRealtime` | 🚧 | WebSocket subscriptions |
+| `PalbaseFunctions` | 🚧 | Edge functions |
+| `PalbaseFlags` | 🚧 | Feature flags |
+| `PalbaseNotifications` | 🚧 | Push / email / SMS |
+| `PalbaseAnalytics` | 🚧 | Event tracking |
+| `PalbaseLinks` | 🚧 | Deep linking |
+| `PalbaseCms` | 🚧 | Content management |
 
 ## License
 
