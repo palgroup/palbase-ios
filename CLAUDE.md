@@ -2,29 +2,29 @@
 
 ## Project
 
-Native Swift SDK for Palbase. Source-only SPM, multi-product (Firebase-style granular).
-No KMP, no XCFramework, no third-party dependencies.
+Native Swift SDK for Palbase. Source-only SPM, granular per-module products
+(Firebase-style). No KMP, no XCFramework, no third-party dependencies.
 
 ## Structure
 
 ```
 palbase-ios/
 ├── Package.swift              → Multi-product manifest, swiftLanguageModes: [.v6]
-├── .swift-format              → Format config (swift-format)
+├── .swift-format              → Format config
 ├── Sources/
-│   ├── PalbaseCore/           → SDK foundation (PalbaseSDK, HttpClient, TokenManager)
+│   ├── PalbaseCore/           → SDK foundation
+│   │   ├── Palbase.swift      → public enum Palbase { configure(...) }
+│   │   ├── PalbaseConfig.swift
+│   │   ├── PalbaseError.swift → PalbaseError protocol + PalbaseCoreError enum
+│   │   ├── HTTPRequesting.swift, HttpClient.swift  → package
+│   │   ├── TokenManager.swift, TokenStorage.swift  → package
+│   │   ├── KeychainTokenStorage (in TokenStorage.swift) → package, default
+│   │   ├── RequestInterceptor.swift                 → package
+│   │   ├── Codec.swift        → JSONDecoder/Encoder.palbaseDefault → package
+│   │   └── Types.swift        → Session, AuthStateEvent, callback typealiases
 │   ├── PalbaseAuth/           → AuthError, PalbaseAuth.shared
-│   ├── PalbaseDB/             → relational DB (PostgREST)
-│   ├── PalbaseDocs/           → document DB
-│   ├── PalbaseStorage/        → file storage
-│   ├── PalbaseRealtime/       → WebSocket
-│   ├── PalbaseFunctions/      → edge functions
-│   ├── PalbaseFlags/          → feature flags
-│   ├── PalbaseNotifications/  → push/email/sms
-│   ├── PalbaseAnalytics/      → event tracking
-│   ├── PalbaseLinks/          → deep links
-│   ├── PalbaseCms/            → content
-│   └── Palbase/               → umbrella (re-exports + Palbase struct)
+│   ├── PalbaseDB/, PalbaseDocs/, PalbaseStorage/, ...  → other modules
+│   └── (no umbrella — users add modules they need)
 └── Tests/
     └── PalbaseCoreTests/      → Swift Testing (@Test, @Suite)
 ```
@@ -33,28 +33,32 @@ palbase-ios/
 
 ### User-facing surface
 
-- **`PalbaseSDK.configure(apiKey:)`** — call once at app startup
-- **`PalbaseAuth.shared`** (and other `.shared`) — primary access point per module
-- **`Palbase()`** — umbrella convenience for `palbase.auth.signIn(...)` syntax
-- All async methods are **`async throws`** — typed errors per module
-- Each module has its own `Error` enum implementing `PalbaseError` protocol
+- **`Palbase.configure(apiKey:)`** — call once at app startup
+- **`Palbase.configure(PalbaseConfig)`** — for advanced opts (URL, URLSession, timeouts)
+- **`PalbaseAuth.shared`**, **`PalbaseDB.shared`**, etc. — module access
+- **All async methods are `async throws(SpecificError)`** — typed errors per module
 
-### Internal surface (hidden from users)
+### Internal surface (`package` access — hidden from users)
 
-- **`HttpClient`, `TokenManager`, `HTTPRequesting`, `RequestInterceptor`** — `package` access
-  - Visible to all modules in this SPM package
-  - **NOT** visible to consumers of the SDK
-  - Module clients use these via `PalbaseSDK.requireHTTP()` / `requireTokens()`
-- DTO structs (request/response wire format) — `internal` (file-scoped via no modifier)
-- Helper functions, type-erasure helpers — `internal` or `private`
+- `HttpClient`, `TokenManager`, `HTTPRequesting`, `RequestInterceptor`
+- `TokenStorage`, `InMemoryTokenStorage`, `KeychainTokenStorage`
+- `JSONDecoder/Encoder.palbaseDefault`, `EmptyResponse`, `PalbaseErrorEnvelope`
+- `RefreshFunction` typealias
+- `Palbase.http`, `Palbase.tokens`, `Palbase.requireHTTP/requireTokens` accessors
+- DTO struct (request/response wire format) — use no modifier (internal)
 
-### Visibility checklist (audit before every PR)
+### Visibility rules
 
 1. Anything user calls → `public`
 2. Anything modules pass between each other → `package`
 3. Anything inside one module → `internal` (default, no modifier)
 4. Anything inside one file → `private` or `fileprivate`
 5. **Default to most restrictive that compiles.** When in doubt, start `internal`.
+
+### Domain types (read-only by user)
+
+- `Session`, `User`, `AuthSuccess` — public struct, but `init` is `package`
+  (only SDK constructs them; users only read)
 
 ## Core Patterns
 
@@ -63,22 +67,26 @@ palbase-ios/
 ```swift
 public protocol PalbaseError: Error, Sendable, LocalizedError {
     var code: String { get }              // snake_case stable identifier
-    var statusCode: Int? { get }          // HTTP status if applicable
-    var requestId: String? { get }        // server-side trace ID
+    var statusCode: Int? { get }
+    var requestId: String? { get }
 }
 
-// Each module:
+// Each module defines its own error type implementing PalbaseError:
 public enum AuthError: PalbaseError {
-    case invalidCredentials
-    case userNotFound
+    case invalidCredentials(message: String)
+    case userNotFound(message: String)
     case mfaRequired(challengeId: String)
-    case transport(PalbaseCoreError)      // wrap transport errors
+    case network(message: String)         // from PalbaseCoreError, mapped
+    case rateLimited(retryAfter: Int?)
+    case http(status: Int, code: String, message: String, requestId: String?)
     case server(code: String, message: String, requestId: String?)
+    case notConfigured                     // SDK not configured
+    // ... ~12 cases
 }
 ```
 
-Map server JSON envelope `{ error, error_description, request_id }` to typed cases via
-`AuthError.from(envelope:)` static helper.
+**PalbaseCoreError must NOT leak through module errors.** Map transport errors via
+`AuthError.from(transport: PalbaseCoreError)` so users only see one error type per call.
 
 ### Module client pattern
 
@@ -93,45 +101,63 @@ public struct PalbaseAuth: Sendable {           // struct, not actor
     }
 
     public static var shared: PalbaseAuth {
-        get throws {
-            let http = try PalbaseSDK.requireHTTP()
-            let tokens = try PalbaseSDK.requireTokens()
+        get throws(AuthError) {
+            guard let http = Palbase.http, let tokens = Palbase.tokens else {
+                throw AuthError.notConfigured
+            }
             return PalbaseAuth(http: http, tokens: tokens)
         }
     }
 
-    public func signIn(email: String, password: String) async throws -> AuthSuccess { ... }
+    public func signIn(email: String, password: String) async throws(AuthError) -> AuthSuccess { ... }
 }
 ```
 
-- **`struct` not `actor`** — module clients are stateless wrappers, no shared mutable state
-- **`package init`** — only umbrella/SDK can construct, users use `.shared`
-- **`shared` is `throws`** — fails fast if `PalbaseSDK.configure(_:)` not called
+- **`struct` not `actor`** — module clients are stateless wrappers, no shared state
+- **`package init`** — users use `.shared`, never construct directly
+- **`shared` `throws(SpecificError)`** — module's own error type (not `PalbaseCoreError`)
+- **All public methods `async throws(SpecificError)`** — typed throws everywhere
+
+### Token persistence
+
+- **Keychain by default** — `KeychainTokenStorage` is `package`, set internally by `Palbase.configure`
+- Users never see `TokenStorage` — it's an implementation detail
+- After `signIn`/`signUp`, session saved to Keychain automatically
+- On `Palbase.configure(_:)`, session re-loaded from Keychain in background Task
+
+### Auth state listener
+
+Expose listener via the module client, NOT TokenManager directly:
+
+```swift
+// User writes:
+let unsub = await PalbaseAuth.shared.onAuthStateChange { [weak self] event, session in
+    self?.handle(event, session)
+}
+
+// PalbaseAuth.swift forwards to the internal TokenManager:
+public func onAuthStateChange(_ callback: @escaping AuthStateCallback) async -> Unsubscribe {
+    await tokens.onAuthStateChange(callback)
+}
+```
 
 ### HTTP
 
-Use `JSONEncoder.palbaseDefault` / `JSONDecoder.palbaseDefault` — they handle snake_case
-conversion automatically. **Do not write `CodingKeys` for casing** — let the decoder strategy
-handle it.
-
-```swift
-struct AuthResultDTO: Decodable, Sendable {
-    let accessToken: String      // matches "access_token" automatically
-    let refreshToken: String
-    let expiresIn: Int
-    let user: UserInfoDTO
-}
-```
-
-Only write `CodingKeys` for non-trivial mappings (`error_description` → `message`).
+- `HttpClient` is `package actor` — `HTTPRequesting` protocol implementation
+- All methods `async throws(PalbaseCoreError) -> ...`
+- `JSONEncoder.palbaseDefault` / `JSONDecoder.palbaseDefault` (package) handle
+  snake_case conversion automatically — **don't write `CodingKeys` for casing**
+- Auto-retry: 3 attempts, exponential backoff
+- 429 with `Retry-After` respected
+- Interceptor untyped throws are wrapped to `PalbaseCoreError.network`
 
 ### Concurrency
 
-- `actor` for things with shared mutable state (`HttpClient`, `TokenManager`)
+- `actor` for shared mutable state (`HttpClient`, `TokenManager`, `KeychainTokenStorage`)
 - `struct: Sendable` for stateless module clients
-- `final class: Sendable` only when reference semantics needed (`State` container)
+- `final class: Sendable` with `NSLock` only when reference semantics needed (`State`)
 - All escaping closures `@Sendable`
-- All `Task` blocks that capture `self` use `[weak self]`
+- All `Task` blocks capturing `self` use `[weak self]`
 - Strict concurrency enforced via `swiftLanguageModes: [.v6]`
 
 ## Configuration
@@ -143,33 +169,21 @@ public struct PalbaseConfig: Sendable {
     public let serviceRoleKey: String?      // server-side bypass token
     public let headers: [String: String]
     public let urlSession: URLSession       // injectable for tests
-    public let tokenStorage: TokenStorage   // protocol — InMemory or Keychain
     public let requestTimeout: TimeInterval
     public let maxRetries: Int
     public let initialBackoffMs: UInt64
 }
 ```
 
-`PalbaseSDK.configure(apiKey:)` shorthand uses defaults. `PalbaseSDK.configure(_:)` accepts
-full config.
+`tokenStorage` is **not** a parameter — Keychain is forced (internal decision).
 
 ## Testing
 
 - **Swift Testing** (`import Testing`, `@Test`, `@Suite`, `#expect`) — not XCTest
 - Place tests under `Tests/{Module}Tests/`
 - Use `@testable import` to access internal/package symbols
-- `actor` helpers for thread-safe state (`actor ReceivedEvents { var events: [Event] }`)
+- `actor` helpers for thread-safe state collection
 - Mock HTTP via custom `URLProtocol` and inject via `PalbaseConfig.urlSession`
-
-```swift
-@Suite("PalbaseCore basics")
-struct CoreTests {
-    @Test("description")
-    func methodName() async throws {
-        #expect(actual == expected)
-    }
-}
-```
 
 ## Build & Verify
 
@@ -181,18 +195,22 @@ swift-format -i -r Sources/  # auto-format
 
 ## Refactor Roadmap
 
-See main project for the 51-item refactor list. Phase 1 (R1-R17) done.
-Next phases: full Auth (Phase 2), DB query builder (Phase 3), etc.
+Phase 1 (R1-R17) done — see Tasks list. Next:
+- Phase 2: Full Auth (magic link, OAuth, MFA, passkeys, ...)
+- Phase 3-7: Implement DB, Docs, Storage, Realtime, etc.
+- Phase 8-11: Production hardening, testing infra, docs, release CI
 
 ## Do NOT
 
-- Use completion handlers — `async throws` only
+- Use completion handlers — `async throws(...)` only
 - Use `URLSession.shared.dataTask` — `URLSession.data(for:)` async API
 - Use third-party HTTP libraries — Foundation only
 - Mark anything `public` if `package` or `internal` works
 - Write `CodingKeys` just for snake_case — use `palbaseDefault` decoder
+- Leak `PalbaseCoreError` through module errors — map to module's own error type
 - Leak `self` in escaping closures
 - Mix `Task`/actors with `DispatchQueue`
-- Throw generic `Error` from public API — use a typed `PalbaseError`-conforming enum
+- Throw untyped `Error` from public API — use module's typed `Error` enum
 - Add a public method without a corresponding test
 - Create new `actor` for stateless types — use `struct: Sendable`
+- Re-introduce the umbrella `Palbase` struct — users add only modules they need
