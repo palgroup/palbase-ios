@@ -12,10 +12,12 @@ public struct PalbaseAuth: Sendable {
     }
 
     /// Shared auth client backed by the global SDK configuration.
+    /// Throws `AuthError.notConfigured` if `PalbaseSDK.configure(apiKey:)` was not called.
     public static var shared: PalbaseAuth {
-        get throws(PalbaseCoreError) {
-            let http = try PalbaseSDK.requireHTTP()
-            let tokens = try PalbaseSDK.requireTokens()
+        get throws(AuthError) {
+            guard let http = PalbaseSDK.http, let tokens = PalbaseSDK.tokens else {
+                throw AuthError.notConfigured
+            }
             return PalbaseAuth(http: http, tokens: tokens)
         }
     }

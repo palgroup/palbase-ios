@@ -18,6 +18,9 @@ public enum AuthError: PalbaseError {
     /// Unrecognized server error.
     case server(code: String, message: String, requestId: String?)
 
+    /// SDK not configured. Call `PalbaseSDK.configure(apiKey:)` first.
+    case notConfigured
+
     public var code: String {
         switch self {
         case .invalidCredentials: return "invalid_credentials"
@@ -30,6 +33,7 @@ public enum AuthError: PalbaseError {
         case .noActiveSession: return "no_active_session"
         case .transport(let core): return core.code
         case .server(let code, _, _): return code
+        case .notConfigured: return "not_configured"
         }
     }
 
@@ -60,6 +64,7 @@ public enum AuthError: PalbaseError {
         case .mfaRequired: return "MFA challenge required"
         case .transport(let core): return core.errorDescription
         case .server(_, let m, _): return m
+        case .notConfigured: return "Palbase SDK not configured. Call PalbaseSDK.configure(apiKey:) first."
         }
     }
 
