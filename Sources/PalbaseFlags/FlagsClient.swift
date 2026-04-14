@@ -1,5 +1,5 @@
 import Foundation
-import PalbaseCore
+@_exported import PalbaseCore
 
 /// Palbase Flags module entry point. Use `PalbaseFlags.shared` after `Palbase.configure(_:)`.
 public struct PalbaseFlags: Sendable {

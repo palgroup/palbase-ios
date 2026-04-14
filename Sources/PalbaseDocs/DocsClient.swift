@@ -1,5 +1,5 @@
 import Foundation
-import PalbaseCore
+@_exported import PalbaseCore
 
 /// Palbase Docs module entry point. Use `PalbaseDocs.shared` after `Palbase.configure(_:)`.
 public struct PalbaseDocs: Sendable {

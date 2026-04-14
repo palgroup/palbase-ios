@@ -1,5 +1,5 @@
 import Foundation
-import PalbaseCore
+@_exported import PalbaseCore
 
 /// Palbase Cms module entry point. Use `PalbaseCms.shared` after `Palbase.configure(_:)`.
 public struct PalbaseCms: Sendable {

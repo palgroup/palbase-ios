@@ -1,5 +1,5 @@
 import Foundation
-import PalbaseCore
+@_exported import PalbaseCore
 
 /// Palbase Notifications module entry point. Use `PalbaseNotifications.shared` after `Palbase.configure(_:)`.
 public struct PalbaseNotifications: Sendable {

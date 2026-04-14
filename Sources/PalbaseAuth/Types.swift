@@ -1,5 +1,5 @@
 import Foundation
-import PalbaseCore
+@_exported import PalbaseCore
 
 public struct User: Sendable, Equatable, Codable {
     public let id: String

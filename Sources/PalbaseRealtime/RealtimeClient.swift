@@ -1,5 +1,5 @@
 import Foundation
-import PalbaseCore
+@_exported import PalbaseCore
 
 /// Palbase Realtime module entry point. Use `PalbaseRealtime.shared` after `Palbase.configure(_:)`.
 public struct PalbaseRealtime: Sendable {

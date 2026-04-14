@@ -1,5 +1,5 @@
 import Foundation
-import PalbaseCore
+@_exported import PalbaseCore
 
 /// Auth module entry point. Use `PalbaseAuth.shared` after calling `Palbase.configure(apiKey:)`.
 public struct PalbaseAuth: Sendable {

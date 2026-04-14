@@ -1,5 +1,5 @@
 import Foundation
-import PalbaseCore
+@_exported import PalbaseCore
 
 /// Errors specific to the Auth module.
 public enum AuthError: PalbaseError {
