@@ -1,7 +1,7 @@
 import Foundation
 import PalbaseCore
 
-/// Palbase Flags module entry point. Use `PalbaseFlags.shared` after `PalbaseSDK.configure(_:)`.
+/// Palbase Flags module entry point. Use `PalbaseFlags.shared` after `Palbase.configure(_:)`.
 public struct PalbaseFlags: Sendable {
     private let http: HTTPRequesting
     private let tokens: TokenManager
@@ -14,8 +14,8 @@ public struct PalbaseFlags: Sendable {
     /// Shared client backed by the global SDK configuration.
     public static var shared: PalbaseFlags {
         get throws {
-            let http = try PalbaseSDK.requireHTTP()
-            let tokens = try PalbaseSDK.requireTokens()
+            let http = try Palbase.requireHTTP()
+            let tokens = try Palbase.requireTokens()
             return PalbaseFlags(http: http, tokens: tokens)
         }
     }

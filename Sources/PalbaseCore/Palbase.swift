@@ -4,13 +4,13 @@ import Foundation
 ///
 /// Call once at app startup:
 /// ```swift
-/// PalbaseSDK.configure(apiKey: "pb_abc123_xxx")
+/// Palbase.configure(apiKey: "pb_abc123_xxx")
 ///
 /// // Anywhere else:
 /// let auth = try PalbaseAuth.shared
 /// try await auth.signIn(email: "...", password: "...")
 /// ```
-public enum PalbaseSDK {
+public enum Palbase {
     private static let state = State()
 
     /// Configure the SDK with a single API key. Most apps use this.

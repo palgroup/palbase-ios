@@ -23,7 +23,7 @@ public enum AuthError: PalbaseError {
     /// Unrecognized server error.
     case server(code: String, message: String, requestId: String?)
 
-    /// SDK not configured. Call `PalbaseSDK.configure(apiKey:)` first.
+    /// SDK not configured. Call `Palbase.configure(apiKey:)` first.
     case notConfigured
 
     public var code: String {
@@ -77,7 +77,7 @@ public enum AuthError: PalbaseError {
             return retryAfter.map { "Rate limited. Retry after \($0)s." } ?? "Rate limited."
         case .serverError(_, let m), .http(_, _, let m, _): return m
         case .server(_, let m, _): return m
-        case .notConfigured: return "Palbase SDK not configured. Call PalbaseSDK.configure(apiKey:) first."
+        case .notConfigured: return "Palbase SDK not configured. Call Palbase.configure(apiKey:) first."
         }
     }
 

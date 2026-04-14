@@ -1,7 +1,7 @@
 import Foundation
 import PalbaseCore
 
-/// Palbase Cms module entry point. Use `PalbaseCms.shared` after `PalbaseSDK.configure(_:)`.
+/// Palbase Cms module entry point. Use `PalbaseCms.shared` after `Palbase.configure(_:)`.
 public struct PalbaseCms: Sendable {
     private let http: HTTPRequesting
     private let tokens: TokenManager
@@ -14,8 +14,8 @@ public struct PalbaseCms: Sendable {
     /// Shared client backed by the global SDK configuration.
     public static var shared: PalbaseCms {
         get throws {
-            let http = try PalbaseSDK.requireHTTP()
-            let tokens = try PalbaseSDK.requireTokens()
+            let http = try Palbase.requireHTTP()
+            let tokens = try Palbase.requireTokens()
             return PalbaseCms(http: http, tokens: tokens)
         }
     }

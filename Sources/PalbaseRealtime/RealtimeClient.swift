@@ -1,7 +1,7 @@
 import Foundation
 import PalbaseCore
 
-/// Palbase Realtime module entry point. Use `PalbaseRealtime.shared` after `PalbaseSDK.configure(_:)`.
+/// Palbase Realtime module entry point. Use `PalbaseRealtime.shared` after `Palbase.configure(_:)`.
 public struct PalbaseRealtime: Sendable {
     private let http: HTTPRequesting
     private let tokens: TokenManager
@@ -14,8 +14,8 @@ public struct PalbaseRealtime: Sendable {
     /// Shared client backed by the global SDK configuration.
     public static var shared: PalbaseRealtime {
         get throws {
-            let http = try PalbaseSDK.requireHTTP()
-            let tokens = try PalbaseSDK.requireTokens()
+            let http = try Palbase.requireHTTP()
+            let tokens = try Palbase.requireTokens()
             return PalbaseRealtime(http: http, tokens: tokens)
         }
     }

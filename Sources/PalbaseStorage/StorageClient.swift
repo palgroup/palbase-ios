@@ -1,7 +1,7 @@
 import Foundation
 import PalbaseCore
 
-/// Palbase Storage module entry point. Use `PalbaseStorage.shared` after `PalbaseSDK.configure(_:)`.
+/// Palbase Storage module entry point. Use `PalbaseStorage.shared` after `Palbase.configure(_:)`.
 public struct PalbaseStorage: Sendable {
     private let http: HTTPRequesting
     private let tokens: TokenManager
@@ -14,8 +14,8 @@ public struct PalbaseStorage: Sendable {
     /// Shared client backed by the global SDK configuration.
     public static var shared: PalbaseStorage {
         get throws {
-            let http = try PalbaseSDK.requireHTTP()
-            let tokens = try PalbaseSDK.requireTokens()
+            let http = try Palbase.requireHTTP()
+            let tokens = try Palbase.requireTokens()
             return PalbaseStorage(http: http, tokens: tokens)
         }
     }

@@ -1,7 +1,7 @@
 import Foundation
 import PalbaseCore
 
-/// Palbase DB module entry point. Use `PalbaseDB.shared` after `PalbaseSDK.configure(_:)`.
+/// Palbase DB module entry point. Use `PalbaseDB.shared` after `Palbase.configure(_:)`.
 public struct PalbaseDB: Sendable {
     private let http: HTTPRequesting
     private let tokens: TokenManager
@@ -14,8 +14,8 @@ public struct PalbaseDB: Sendable {
     /// Shared client backed by the global SDK configuration.
     public static var shared: PalbaseDB {
         get throws {
-            let http = try PalbaseSDK.requireHTTP()
-            let tokens = try PalbaseSDK.requireTokens()
+            let http = try Palbase.requireHTTP()
+            let tokens = try Palbase.requireTokens()
             return PalbaseDB(http: http, tokens: tokens)
         }
     }

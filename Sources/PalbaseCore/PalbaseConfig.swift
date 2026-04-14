@@ -1,6 +1,6 @@
 import Foundation
 
-/// Configuration for the SDK. Apps usually call `PalbaseSDK.configure(apiKey:)` —
+/// Configuration for the SDK. Apps usually call `Palbase.configure(apiKey:)` —
 /// only use this struct when you need to override transport behavior (custom URL,
 /// timeouts, custom URLSession for testing).
 public struct PalbaseConfig: Sendable {

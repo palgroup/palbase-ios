@@ -44,7 +44,7 @@ public enum PalbaseCoreError: PalbaseError {
     /// Invalid configuration (e.g., malformed API key, missing URL).
     case invalidConfiguration(message: String)
 
-    /// SDK not configured. Call `PalbaseSDK.configure(apiKey:)` first.
+    /// SDK not configured. Call `Palbase.configure(apiKey:)` first.
     case notConfigured
 
     /// Token refresh failed (no refresh token, refresh endpoint failed).
@@ -90,7 +90,7 @@ public enum PalbaseCoreError: PalbaseError {
             return retryAfter.map { "Rate limited. Retry after \($0)s." } ?? "Rate limited."
         case .server(_, let message): return message
         case .invalidConfiguration(let message): return message
-        case .notConfigured: return "Palbase SDK not configured. Call PalbaseSDK.configure(apiKey:) first."
+        case .notConfigured: return "Palbase SDK not configured. Call Palbase.configure(apiKey:) first."
         case .tokenRefreshFailed(let message): return message
         }
     }

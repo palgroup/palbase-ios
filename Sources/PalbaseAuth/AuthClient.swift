@@ -1,7 +1,7 @@
 import Foundation
 import PalbaseCore
 
-/// Auth module entry point. Use `PalbaseAuth.shared` after calling `PalbaseSDK.configure(apiKey:)`.
+/// Auth module entry point. Use `PalbaseAuth.shared` after calling `Palbase.configure(apiKey:)`.
 public struct PalbaseAuth: Sendable {
     private let http: HTTPRequesting
     private let tokens: TokenManager
@@ -12,10 +12,10 @@ public struct PalbaseAuth: Sendable {
     }
 
     /// Shared auth client backed by the global SDK configuration.
-    /// Throws `AuthError.notConfigured` if `PalbaseSDK.configure(apiKey:)` was not called.
+    /// Throws `AuthError.notConfigured` if `Palbase.configure(apiKey:)` was not called.
     public static var shared: PalbaseAuth {
         get throws(AuthError) {
-            guard let http = PalbaseSDK.http, let tokens = PalbaseSDK.tokens else {
+            guard let http = Palbase.http, let tokens = Palbase.tokens else {
                 throw AuthError.notConfigured
             }
             return PalbaseAuth(http: http, tokens: tokens)

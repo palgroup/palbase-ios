@@ -1,7 +1,7 @@
 import Foundation
 import PalbaseCore
 
-/// Palbase Notifications module entry point. Use `PalbaseNotifications.shared` after `PalbaseSDK.configure(_:)`.
+/// Palbase Notifications module entry point. Use `PalbaseNotifications.shared` after `Palbase.configure(_:)`.
 public struct PalbaseNotifications: Sendable {
     private let http: HTTPRequesting
     private let tokens: TokenManager
@@ -14,8 +14,8 @@ public struct PalbaseNotifications: Sendable {
     /// Shared client backed by the global SDK configuration.
     public static var shared: PalbaseNotifications {
         get throws {
-            let http = try PalbaseSDK.requireHTTP()
-            let tokens = try PalbaseSDK.requireTokens()
+            let http = try Palbase.requireHTTP()
+            let tokens = try Palbase.requireTokens()
             return PalbaseNotifications(http: http, tokens: tokens)
         }
     }
