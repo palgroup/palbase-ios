@@ -223,6 +223,27 @@ swift test       # all green
 swift-format -i -r Sources/  # auto-format
 ```
 
+## Documentation maintenance
+
+Every module has its own `README.md` at `Sources/{Module}/README.md`. The root
+`README.md` references them in a table.
+
+**Rules — apply on every PR:**
+
+1. Adding a new public method/type to a module → **update that module's README.md**
+   - Add to the relevant section (e.g., "Magic Link", "Sessions")
+   - Show a usage example
+   - If error cases were added, update the `AuthError` (or module's error) table
+2. Adding a new module or completing a placeholder → **update root README's module table**
+   (move from 🚧 to ✅, link to its README)
+3. Changing public API surface (visibility, signature, naming) → **update both the
+   module README and CLAUDE.md's "Public Surface Whitelist"**
+4. Never let docs lag behind code. If you skip docs in a PR, leave a TODO in the
+   commit message and open a follow-up.
+
+When you're unsure if a doc change is needed: read the affected README; if any code
+example or type table is now incorrect → fix it.
+
 ## Refactor Roadmap
 
 Phase 1 (R1-R17) done — see Tasks list. Next:

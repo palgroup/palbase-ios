@@ -24,7 +24,7 @@ targets: [
     .target(
         name: "MyApp",
         dependencies: [
-            // Install only what you need (smaller binary)
+            // Install only what you need
             .product(name: "PalbaseAuth", package: "palbase-ios"),
             .product(name: "PalbaseDB", package: "palbase-ios"),
         ]
@@ -32,14 +32,12 @@ targets: [
 ]
 ```
 
-There is no umbrella product. Add each module you actually use.
+`PalbaseCore` is a transitive dependency — every module re-exports its symbols.
 
 ## Quick Start
 
-### 1. Configure once at app startup
-
 ```swift
-import PalbaseCore
+import PalbaseAuth   // implicitly imports Palbase.configure, etc.
 
 @main
 struct MyApp: App {
@@ -48,124 +46,82 @@ struct MyApp: App {
     }
     var body: some Scene { ... }
 }
+
+// Sign in
+let result = try await PalbaseAuth.shared.signIn(
+    email: "user@example.com",
+    password: "secret"
+)
 ```
 
-For advanced setup (custom URL, URLSession, timeouts):
+## Modules
+
+| Module | Status | Docs |
+|--------|--------|------|
+| [`PalbaseCore`](Sources/PalbaseCore/README.md) | ✅ | SDK foundation: `Palbase.configure`, `PalbaseConfig`, `Session`, `PalbaseError` |
+| [`PalbaseAuth`](Sources/PalbaseAuth/README.md) | ✅ | Email/password, magic link, OAuth, Apple Sign In, sessions |
+| [`PalbaseDB`](Sources/PalbaseDB/README.md) | 🚧 | Relational DB (PostgREST) |
+| [`PalbaseDocs`](Sources/PalbaseDocs/README.md) | 🚧 | Document DB (Firestore-like) |
+| [`PalbaseStorage`](Sources/PalbaseStorage/README.md) | 🚧 | File storage with progress |
+| [`PalbaseRealtime`](Sources/PalbaseRealtime/README.md) | 🚧 | WebSocket subscriptions |
+| [`PalbaseFunctions`](Sources/PalbaseFunctions/README.md) | 🚧 | Edge functions |
+| [`PalbaseFlags`](Sources/PalbaseFlags/README.md) | 🚧 | Feature flags |
+| [`PalbaseNotifications`](Sources/PalbaseNotifications/README.md) | 🚧 | Push / email / SMS |
+| [`PalbaseAnalytics`](Sources/PalbaseAnalytics/README.md) | 🚧 | Event tracking |
+| [`PalbaseLinks`](Sources/PalbaseLinks/README.md) | 🚧 | Deep linking |
+| [`PalbaseCms`](Sources/PalbaseCms/README.md) | 🚧 | Content management |
+
+## Concepts
+
+### Configuration
 
 ```swift
-Palbase.configure(PalbaseConfig(
-    apiKey: "pb_abc123_xxx",
-    requestTimeout: 30,
-    maxRetries: 3
-))
+Palbase.configure(apiKey: "pb_abc123_xxx")  // simplest
+Palbase.configure(PalbaseConfig(apiKey: "...", requestTimeout: 60))  // full options
 ```
 
-### 2. Use modules via `.shared`
+See [PalbaseCore](Sources/PalbaseCore/README.md) for all `PalbaseConfig` fields.
+
+### Errors — typed throws per module
+
+Every module has its own error enum. Example with `AuthError`:
 
 ```swift
-import PalbaseAuth
-
 do {
-    let result = try await PalbaseAuth.shared.signIn(
-        email: "user@example.com",
-        password: "secret"
-    )
-    print("Signed in: \(result.user.email)")
+    try await PalbaseAuth.shared.signIn(email: "...", password: "...")
 } catch AuthError.invalidCredentials {
-    print("Wrong password")
+    showError("Wrong password")
 } catch AuthError.notConfigured {
     fatalError("Call Palbase.configure(apiKey:) first")
 } catch {
-    print("Error: \(error.localizedDescription)")
+    showError(error.localizedDescription)
 }
 ```
 
-## Error Handling
-
-Every method uses **typed throws** — the error type is part of the signature:
-
-```swift
-public func signIn(...) async throws(AuthError) -> AuthSuccess
-```
-
-`AuthError` is an exhaustive enum:
-
-```swift
-public enum AuthError: PalbaseError {
-    case invalidCredentials(message: String)
-    case userNotFound(message: String)
-    case emailAlreadyInUse(message: String)
-    case weakPassword(message: String)
-    case emailNotVerified(message: String)
-    case mfaRequired(challengeId: String)
-    case sessionExpired(message: String)
-    case noActiveSession(message: String)
-    case network(message: String)
-    case decoding(message: String)
-    case rateLimited(retryAfter: Int?)
-    case serverError(status: Int, message: String)
-    case http(status: Int, code: String, message: String, requestId: String?)
-    case server(code: String, message: String, requestId: String?)
-    case notConfigured
-}
-```
-
-Each module defines its own error enum implementing the `PalbaseError` protocol:
+All module errors implement the `PalbaseError` protocol:
 
 ```swift
 public protocol PalbaseError: Error, Sendable, LocalizedError {
-    var code: String { get }              // snake_case stable identifier
+    var code: String { get }       // snake_case stable identifier
     var statusCode: Int? { get }
     var requestId: String? { get }
 }
 ```
 
-## Auth State Changes
+### Session persistence
 
-```swift
-class AuthViewModel: ObservableObject {
-    @Published var session: Session?
-    private var unsubscribe: Unsubscribe?
+Sessions are stored in **Keychain** automatically. After `signIn`/`signUp`:
+- Saved to Keychain (encrypted, survives app restarts)
+- Auto-refresh when access token expires
+- Concurrent refresh calls collapsed into one
+- Cleared on `signOut`
 
-    init() {
-        Task {
-            let auth = try? PalbaseAuth.shared
-            self.unsubscribe = await auth?.onAuthStateChange { [weak self] event, session in
-                Task { @MainActor in self?.session = session }
-            }
-        }
-    }
-
-    deinit { unsubscribe?() }
-}
-```
-
-> **Warning:** Always capture `self` weakly. The library returns the `Unsubscribe`
-> closure — call it when you no longer want events.
-
-## Session Persistence
-
-Sessions are stored in **Keychain** automatically. After `signIn`, the session survives
-app restarts and is re-loaded on `Palbase.configure(_:)`.
-
-You don't manage tokens. The SDK handles:
-
-- Saving to Keychain after `signIn`/`signUp`
-- Auto-refreshing the access token before it expires
-- Collapsing concurrent refresh calls into one request
-- Clearing on `signOut`
-
-```swift
-let isSignedIn = await PalbaseAuth.shared.isSignedIn
-let session = await PalbaseAuth.shared.currentSession
-```
-
-## Concurrency
+### Concurrency
 
 - All public types are `Sendable`
-- All methods are `async throws(SpecificError)`
-- Module clients are `struct` — value semantics, cheap
-- Internal `HttpClient` and `TokenManager` are `actor`s — thread-safe
+- All async methods are `async throws(SpecificError)`
+- Module clients are `struct` (value semantics, cheap)
+- Internal `HttpClient`, `TokenManager` are `actor`s
 
 ```swift
 Task { @MainActor in
@@ -174,23 +130,6 @@ Task { @MainActor in
 }
 ```
 
-## Modules
-
-| Module | Status | Description |
-|--------|--------|-------------|
-| `PalbaseCore` | ✅ | `Palbase`, `Session`, `PalbaseError` protocol, `PalbaseConfig` |
-| `PalbaseAuth` | ✅ | `signUp`, `signIn`, `signOut`, `getUser`, auto-refresh, listener |
-| `PalbaseDB` | 🚧 | Relational DB (PostgREST query builder) |
-| `PalbaseDocs` | 🚧 | Document DB (Firestore-like) |
-| `PalbaseStorage` | 🚧 | File storage with progress |
-| `PalbaseRealtime` | 🚧 | WebSocket subscriptions |
-| `PalbaseFunctions` | 🚧 | Edge functions |
-| `PalbaseFlags` | 🚧 | Feature flags |
-| `PalbaseNotifications` | 🚧 | Push / email / SMS |
-| `PalbaseAnalytics` | 🚧 | Event tracking |
-| `PalbaseLinks` | 🚧 | Deep linking |
-| `PalbaseCms` | 🚧 | Content management |
-
 ## Public API Surface
 
 The SDK only exposes what you need. Internal types like `HttpClient`, `TokenManager`,
@@ -198,13 +137,13 @@ The SDK only exposes what you need. Internal types like `HttpClient`, `TokenMana
 
 What you'll see in autocomplete:
 
-- `Palbase.configure(apiKey:)`
+- `Palbase.configure(apiKey:)` / `Palbase.configure(_:)`
 - `PalbaseConfig`
 - `PalbaseAuth.shared` (and other module `.shared`)
-- `Session`, `User`, `AuthSuccess`
-- `AuthStateEvent`, `AuthStateCallback`, `Unsubscribe`
-- `PalbaseError` protocol
-- `PalbaseCoreError`, `AuthError` enums
+- Module-specific errors (`AuthError`, etc.)
+- Read-only domain types (`Session`, `User`, `AuthSuccess`, ...)
+
+See each module's README for its specific API.
 
 ## License
 
