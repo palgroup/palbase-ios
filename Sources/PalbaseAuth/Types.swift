@@ -41,6 +41,48 @@ public struct VerificationChallenge: Sendable {
     }
 }
 
+/// Common OAuth providers supported by Palbase. Use `.custom("name")` for others.
+public enum OAuthProvider: Sendable, Equatable {
+    case google
+    case apple
+    case github
+    case microsoft
+    case facebook
+    case twitter
+    case discord
+    case slack
+    case custom(String)
+
+    public var name: String {
+        switch self {
+        case .google: return "google"
+        case .apple: return "apple"
+        case .github: return "github"
+        case .microsoft: return "microsoft"
+        case .facebook: return "facebook"
+        case .twitter: return "twitter"
+        case .discord: return "discord"
+        case .slack: return "slack"
+        case .custom(let s): return s
+        }
+    }
+}
+
+/// Linked identity for a user (Google, Apple, etc. account they signed in with).
+public struct Identity: Sendable, Equatable, Codable {
+    public let id: String
+    public let provider: String
+    public let providerUserId: String
+    public let createdAt: String
+
+    package init(id: String, provider: String, providerUserId: String, createdAt: String) {
+        self.id = id
+        self.provider = provider
+        self.providerUserId = providerUserId
+        self.createdAt = createdAt
+    }
+}
+
 /// One active session for the current user.
 public struct AuthSession: Sendable, Equatable, Codable {
     public let id: String
@@ -187,6 +229,36 @@ struct MagicLinkVerifyBody: Encodable, Sendable {
 
 struct AuthSessionListDTO: Decodable, Sendable {
     let sessions: [AuthSessionDTO]
+}
+
+struct OAuthURLResponseDTO: Decodable, Sendable {
+    let url: String
+}
+
+struct CredentialExchangeBody: Encodable, Sendable {
+    let provider: String
+    let credential: String
+    let nonce: String?
+}
+
+struct IdentityListDTO: Decodable, Sendable {
+    let identities: [IdentityDTO]
+}
+
+struct IdentityDTO: Decodable, Sendable {
+    let id: String
+    let provider: String
+    let providerUserId: String
+    let createdAt: String
+
+    func toIdentity() -> Identity {
+        Identity(id: id, provider: provider, providerUserId: providerUserId, createdAt: createdAt)
+    }
+}
+
+struct LinkIdentityBody: Encodable, Sendable {
+    let provider: String
+    let credential: String
 }
 
 struct AuthSessionDTO: Decodable, Sendable {
