@@ -187,6 +187,6 @@ package actor HttpClient: HTTPRequesting {
 
 // MARK: - Empty response sentinel for void endpoints
 
-public struct EmptyResponse: Decodable, Sendable {
-    public init() {}
+package struct EmptyResponse: Decodable, Sendable {
+    package init() {}
 }

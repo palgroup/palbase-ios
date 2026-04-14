@@ -3,6 +3,7 @@ import PalbaseCore
 
 /// Errors specific to the Auth module.
 public enum AuthError: PalbaseError {
+    // Auth-specific
     case invalidCredentials(message: String = "Invalid email or password")
     case userNotFound(message: String = "User not found")
     case emailAlreadyInUse(message: String = "Email already registered")
@@ -12,8 +13,12 @@ public enum AuthError: PalbaseError {
     case sessionExpired(message: String = "Session expired, please sign in again")
     case noActiveSession(message: String = "No active session")
 
-    /// HTTP transport error wrapped with auth context.
-    case transport(PalbaseCoreError)
+    // Generic transport (translated from PalbaseCoreError)
+    case network(message: String)
+    case decoding(message: String)
+    case rateLimited(retryAfter: Int?)
+    case serverError(status: Int, message: String)
+    case http(status: Int, code: String, message: String, requestId: String?)
 
     /// Unrecognized server error.
     case server(code: String, message: String, requestId: String?)
@@ -31,7 +36,11 @@ public enum AuthError: PalbaseError {
         case .mfaRequired: return "mfa_required"
         case .sessionExpired: return "session_expired"
         case .noActiveSession: return "no_active_session"
-        case .transport(let core): return core.code
+        case .network: return "network_error"
+        case .decoding: return "decoding_error"
+        case .rateLimited: return "rate_limited"
+        case .serverError: return "server_error"
+        case .http(_, let code, _, _): return code
         case .server(let code, _, _): return code
         case .notConfigured: return "not_configured"
         }
@@ -42,14 +51,16 @@ public enum AuthError: PalbaseError {
         case .invalidCredentials, .sessionExpired: return 401
         case .emailAlreadyInUse: return 409
         case .userNotFound: return 404
-        case .transport(let core): return core.statusCode
+        case .rateLimited: return 429
+        case .serverError(let s, _): return s
+        case .http(let s, _, _, _): return s
         default: return nil
         }
     }
 
     public var requestId: String? {
         switch self {
-        case .transport(let core): return core.requestId
+        case .http(_, _, _, let id): return id
         case .server(_, _, let id): return id
         default: return nil
         }
@@ -59,10 +70,12 @@ public enum AuthError: PalbaseError {
         switch self {
         case .invalidCredentials(let m), .userNotFound(let m), .emailAlreadyInUse(let m),
              .weakPassword(let m), .emailNotVerified(let m), .sessionExpired(let m),
-             .noActiveSession(let m):
+             .noActiveSession(let m), .network(let m), .decoding(let m):
             return m
         case .mfaRequired: return "MFA challenge required"
-        case .transport(let core): return core.errorDescription
+        case .rateLimited(let retryAfter):
+            return retryAfter.map { "Rate limited. Retry after \($0)s." } ?? "Rate limited."
+        case .serverError(_, let m), .http(_, _, let m, _): return m
         case .server(_, let m, _): return m
         case .notConfigured: return "Palbase SDK not configured. Call PalbaseSDK.configure(apiKey:) first."
         }
@@ -85,7 +98,21 @@ public enum AuthError: PalbaseError {
         }
     }
 
-    static func fromTransport(_ error: PalbaseCoreError) -> AuthError {
-        .transport(error)
+    /// Map transport-level core errors to module-specific cases (so PalbaseCoreError
+    /// stays internal/package and never leaks to the user).
+    static func from(transport: PalbaseCoreError) -> AuthError {
+        switch transport {
+        case .network(let m): return .network(message: m)
+        case .decoding(let m): return .decoding(message: m)
+        case .encoding(let m): return .network(message: m)  // surface as network for users
+        case .rateLimited(let r): return .rateLimited(retryAfter: r)
+        case .server(let s, let m): return .serverError(status: s, message: m)
+        case .http(let s, let c, let m, let id):
+            // Try to decode as auth-specific via code mapping
+            return .http(status: s, code: c, message: m, requestId: id)
+        case .invalidConfiguration(let m): return .network(message: m)
+        case .notConfigured: return .notConfigured
+        case .tokenRefreshFailed(let m): return .sessionExpired(message: m)
+        }
     }
 }

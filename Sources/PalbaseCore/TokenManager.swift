@@ -1,6 +1,6 @@
 import Foundation
 
-public typealias RefreshFunction = @Sendable (String) async throws -> Session
+package typealias RefreshFunction = @Sendable (String) async throws -> Session
 
 package actor TokenManager {
     private let storage: TokenStorage
@@ -15,38 +15,38 @@ package actor TokenManager {
     }
 
     /// Hydrate from persistent storage. Call once at SDK startup.
-    public func loadFromStorage() async {
+    package func loadFromStorage() async {
         cachedSession = await storage.load()
     }
 
-    public var accessToken: String? { cachedSession?.accessToken }
-    public var refreshToken: String? { cachedSession?.refreshToken }
-    public var currentSession: Session? { cachedSession }
+    package var accessToken: String? { cachedSession?.accessToken }
+    package var refreshToken: String? { cachedSession?.refreshToken }
+    package var currentSession: Session? { cachedSession }
 
-    public var isExpired: Bool {
+    package var isExpired: Bool {
         guard let session = cachedSession else { return true }
         return session.isExpired
     }
 
-    public func setSession(_ session: Session) async {
+    package func setSession(_ session: Session) async {
         cachedSession = session
         await storage.save(session)
         notify(.sessionSet, session)
     }
 
-    public func clearSession() async {
+    package func clearSession() async {
         cachedSession = nil
         await storage.clear()
         notify(.sessionCleared, nil)
     }
 
-    public func setRefreshFunction(_ fn: @escaping RefreshFunction) {
+    package func setRefreshFunction(_ fn: @escaping RefreshFunction) {
         self.refreshFunction = fn
     }
 
     /// Collapses concurrent refresh calls into a single in-flight task.
     @discardableResult
-    public func refreshSession() async throws -> Session {
+    package func refreshSession() async throws -> Session {
         guard let refreshToken = cachedSession?.refreshToken,
               let fn = refreshFunction else {
             throw PalbaseCoreError.tokenRefreshFailed(message: "No refresh token or refresh function available")
@@ -71,7 +71,7 @@ package actor TokenManager {
     /// Subscribe to auth state changes.
     /// > Warning: Capture `self` weakly in the closure to avoid retain cycles.
     @discardableResult
-    public func onAuthStateChange(_ callback: @escaping AuthStateCallback) -> Unsubscribe {
+    package func onAuthStateChange(_ callback: @escaping AuthStateCallback) -> Unsubscribe {
         let id = UUID()
         listeners[id] = callback
         return { [weak self] in

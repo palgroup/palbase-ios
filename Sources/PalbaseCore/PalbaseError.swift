@@ -100,12 +100,12 @@ public enum PalbaseCoreError: PalbaseError {
 
 /// Represents the error JSON returned by the Palbase server.
 /// Modules use this to map server errors to their own error cases.
-public struct PalbaseErrorEnvelope: Sendable, Decodable {
-    public let code: String
-    public let message: String
-    public let status: Int
-    public let requestId: String?
-    public let details: [String: String]?
+package struct PalbaseErrorEnvelope: Sendable, Decodable {
+    package let code: String
+    package let message: String
+    package let status: Int
+    package let requestId: String?
+    package let details: [String: String]?
 
     enum CodingKeys: String, CodingKey {
         case code = "error"

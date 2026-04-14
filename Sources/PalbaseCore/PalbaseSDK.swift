@@ -11,7 +11,6 @@ import Foundation
 /// try await auth.signIn(email: "...", password: "...")
 /// ```
 public enum PalbaseSDK {
-    /// Internal shared state — all access goes through synchronized accessors.
     private static let state = State()
 
     /// Configure the SDK with a single API key. Most apps use this.
@@ -19,28 +18,21 @@ public enum PalbaseSDK {
         configure(PalbaseConfig(apiKey: apiKey))
     }
 
-    /// Configure with full options (custom URL, token storage, URLSession, etc.).
+    /// Configure with full options (custom URL, URLSession, timeouts, etc.).
     public static func configure(_ config: PalbaseConfig) {
-        let tokens = TokenManager(storage: config.tokenStorage)
+        let storage = KeychainTokenStorage()
+        let tokens = TokenManager(storage: storage)
         let http = HttpClient(config: config, tokens: tokens)
         state.set(config: config, tokens: tokens, http: http)
 
-        // Hydrate session from storage in background
+        // Hydrate session from Keychain in background
         Task { await tokens.loadFromStorage() }
-    }
-
-    /// Reset SDK state. Test-only.
-    public static func reset() {
-        state.reset()
     }
 
     /// The active configuration, if `configure(_:)` has been called.
     public static var config: PalbaseConfig? { state.config }
 
-    /// The shared HTTP client. Throws `.notConfigured` if not configured.
     package static var http: HTTPRequesting? { state.http }
-
-    /// The shared token manager. Throws `.notConfigured` if not configured.
     package static var tokens: TokenManager? { state.tokens }
 
     package static func requireHTTP() throws(PalbaseCoreError) -> HTTPRequesting {
@@ -54,8 +46,7 @@ public enum PalbaseSDK {
     }
 }
 
-/// Thread-safe container for SDK state. Uses NSLock for atomic mutation.
-/// Reads are lock-free since references are atomic on Apple platforms; writes are locked.
+/// Thread-safe container for SDK state.
 final class State: @unchecked Sendable {
     private let lock = NSLock()
     private var _config: PalbaseConfig?
@@ -82,12 +73,5 @@ final class State: @unchecked Sendable {
         _config = config
         _tokens = tokens
         _http = http
-    }
-
-    func reset() {
-        lock.lock(); defer { lock.unlock() }
-        _config = nil
-        _tokens = nil
-        _http = nil
     }
 }

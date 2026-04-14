@@ -22,6 +22,37 @@ public struct PalbaseAuth: Sendable {
         }
     }
 
+    // MARK: - Session inspection
+
+    /// Currently active session, or nil if signed out.
+    public var currentSession: Session? {
+        get async { await tokens.currentSession }
+    }
+
+    /// Convenience: true if there's an active (not expired) session.
+    public var isSignedIn: Bool {
+        get async {
+            guard let s = await tokens.currentSession else { return false }
+            return !s.isExpired
+        }
+    }
+
+    // MARK: - Auth state listener
+
+    /// Subscribe to auth events (sessionSet, sessionCleared, tokenRefreshed).
+    /// Returns an `Unsubscribe` closure — call it when you no longer want events.
+    ///
+    /// > Warning: Capture `self` weakly in the closure to avoid retain cycles:
+    /// > ```swift
+    /// > let unsub = await PalbaseAuth.shared.onAuthStateChange { [weak self] event, session in
+    /// >     self?.handle(event, session)
+    /// > }
+    /// > ```
+    @discardableResult
+    public func onAuthStateChange(_ callback: @escaping AuthStateCallback) async -> Unsubscribe {
+        await tokens.onAuthStateChange(callback)
+    }
+
     // MARK: - Core Auth
 
     /// Create a new user with email and password.
@@ -44,7 +75,7 @@ public struct PalbaseAuth: Sendable {
         do {
             try await http.requestVoid(method: "POST", path: "/auth/logout", body: nil, headers: [:])
         } catch {
-            throw AuthError.transport(error)
+            throw AuthError.from(transport: error)
         }
     }
 
@@ -54,7 +85,7 @@ public struct PalbaseAuth: Sendable {
         do {
             dto = try await http.request(method: "GET", path: "/auth/user", body: nil, headers: [:])
         } catch {
-            throw AuthError.transport(error)
+            throw AuthError.from(transport: error)
         }
         return dto.toUser()
     }
@@ -66,7 +97,7 @@ public struct PalbaseAuth: Sendable {
         do {
             dto = try await http.request(method: "POST", path: path, body: body, headers: [:])
         } catch {
-            throw AuthError.transport(error)
+            throw AuthError.from(transport: error)
         }
 
         let session = dto.toSession()
