@@ -5,10 +5,28 @@ public actor PalbaseAuthClient {
     private let http: HttpClient
     private let tokens: TokenManager
 
-    public init(http: HttpClient, tokens: TokenManager) {
+    /// Direct construction — for granular module-only usage.
+    /// ```swift
+    /// let auth = PalbaseAuthClient(apiKey: "pb_abc123_xxx")
+    /// ```
+    public init(apiKey: String, options: HttpClientOptions = .init()) {
+        let http = HttpClient(apiKey: apiKey, options: options)
+        let tokens = TokenManager()
         self.http = http
         self.tokens = tokens
+        Task { await http.setTokenManager(tokens) }
     }
+
+    /// Internal — used by `PalbaseClient` umbrella to share HttpClient/TokenManager.
+    public init(sharedHttp: HttpClient, sharedTokens: TokenManager) {
+        self.http = sharedHttp
+        self.tokens = sharedTokens
+    }
+
+    // MARK: - Public properties (read-only access for advanced cases)
+
+    public var httpClient: HttpClient { http }
+    public var tokenManager: TokenManager { tokens }
 
     // MARK: - Core Auth
 

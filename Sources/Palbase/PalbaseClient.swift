@@ -12,20 +12,16 @@ import Foundation
 @_exported import PalbaseLinks
 @_exported import PalbaseCms
 
-/// Umbrella client — one-stop entry point that configures all modules with a shared
-/// HttpClient and TokenManager.
+/// Umbrella client. All modules share a single HttpClient and TokenManager.
 ///
 /// ```swift
 /// let palbase = PalbaseClient(apiKey: "pb_abc123_xxx")
 /// let result = await palbase.auth.signIn(email: "...", password: "...")
 /// ```
 ///
-/// Prefer granular modules if you only need specific features (smaller binary):
+/// For smaller binaries, use granular modules instead:
 /// ```swift
-/// // Only depend on PalbaseAuth in your Package.swift
-/// let http = HttpClient(apiKey: "pb_abc123_xxx")
-/// let tokens = TokenManager()
-/// let auth = PalbaseAuthClient(http: http, tokens: tokens)
+/// let auth = PalbaseAuthClient(apiKey: "pb_abc123_xxx")
 /// ```
 public final class PalbaseClient: Sendable {
     public let http: HttpClient
@@ -49,17 +45,17 @@ public final class PalbaseClient: Sendable {
 
         self.http = http
         self.tokens = tokens
-        self.auth = PalbaseAuthClient(http: http, tokens: tokens)
-        self.db = PalbaseDBClient(http: http)
-        self.docs = PalbaseDocsClient(http: http)
-        self.storage = PalbaseStorageClient(http: http)
-        self.realtime = PalbaseRealtimeClient(http: http)
-        self.functions = PalbaseFunctionsClient(http: http)
-        self.flags = PalbaseFlagsClient(http: http)
-        self.notifications = PalbaseNotificationsClient(http: http)
-        self.analytics = PalbaseAnalyticsClient(http: http)
-        self.links = PalbaseLinksClient(http: http)
-        self.cms = PalbaseCmsClient(http: http)
+        self.auth = PalbaseAuthClient(sharedHttp: http, sharedTokens: tokens)
+        self.db = PalbaseDBClient(sharedHttp: http, sharedTokens: tokens)
+        self.docs = PalbaseDocsClient(sharedHttp: http, sharedTokens: tokens)
+        self.storage = PalbaseStorageClient(sharedHttp: http, sharedTokens: tokens)
+        self.realtime = PalbaseRealtimeClient(sharedHttp: http, sharedTokens: tokens)
+        self.functions = PalbaseFunctionsClient(sharedHttp: http, sharedTokens: tokens)
+        self.flags = PalbaseFlagsClient(sharedHttp: http, sharedTokens: tokens)
+        self.notifications = PalbaseNotificationsClient(sharedHttp: http, sharedTokens: tokens)
+        self.analytics = PalbaseAnalyticsClient(sharedHttp: http, sharedTokens: tokens)
+        self.links = PalbaseLinksClient(sharedHttp: http, sharedTokens: tokens)
+        self.cms = PalbaseCmsClient(sharedHttp: http, sharedTokens: tokens)
 
         Task { await http.setTokenManager(tokens) }
     }

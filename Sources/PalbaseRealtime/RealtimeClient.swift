@@ -1,11 +1,27 @@
 import Foundation
 @_exported import PalbaseCore
 
-// MARK: - PalbaseRealtime Client (placeholder — implementation coming)
-public final class PalbaseRealtimeClient: Sendable {
-    public let http: HttpClient
+public actor PalbaseRealtimeClient {
+    private let http: HttpClient
+    private let tokens: TokenManager
 
-    public init(http: HttpClient) {
+    /// Direct construction — for granular module-only usage.
+    public init(apiKey: String, options: HttpClientOptions = .init()) {
+        let http = HttpClient(apiKey: apiKey, options: options)
+        let tokens = TokenManager()
         self.http = http
+        self.tokens = tokens
+        Task { await http.setTokenManager(tokens) }
     }
+
+    /// Internal — used by `PalbaseClient` umbrella to share HttpClient/TokenManager.
+    public init(sharedHttp: HttpClient, sharedTokens: TokenManager) {
+        self.http = sharedHttp
+        self.tokens = sharedTokens
+    }
+
+    public var httpClient: HttpClient { http }
+    public var tokenManager: TokenManager { tokens }
+
+    // TODO: Implement Realtime API
 }
