@@ -1,6 +1,8 @@
 import Foundation
 @_exported import PalbaseCore
 
+// MARK: - Public domain types
+
 public struct User: Sendable, Equatable, Codable {
     public let id: String
     public let email: String
@@ -24,6 +26,37 @@ public struct AuthSuccess: Sendable {
     package init(user: User, session: Session) {
         self.user = user
         self.session = session
+    }
+}
+
+/// Pending verification challenge after sign-up. Server may return a token (link)
+/// and/or a code (for code-based verification).
+public struct VerificationChallenge: Sendable {
+    public let token: String?
+    public let code: String?
+
+    package init(token: String?, code: String?) {
+        self.token = token
+        self.code = code
+    }
+}
+
+/// One active session for the current user.
+public struct AuthSession: Sendable, Equatable, Codable {
+    public let id: String
+    public let ip: String?
+    public let userAgent: String?
+    public let lastActivity: String
+    public let createdAt: String
+    public let current: Bool
+
+    package init(id: String, ip: String?, userAgent: String?, lastActivity: String, createdAt: String, current: Bool) {
+        self.id = id
+        self.ip = ip
+        self.userAgent = userAgent
+        self.lastActivity = lastActivity
+        self.createdAt = createdAt
+        self.current = current
     }
 }
 
@@ -66,6 +99,8 @@ struct AuthResultDTO: Decodable, Sendable {
     let tokenType: String
     let expiresIn: Int
     let user: UserInfoDTO
+    let verificationToken: String?
+    let verificationCode: String?
 
     func toSession() -> Session {
         let expiresAt = Int64(Date().timeIntervalSince1970) + Int64(expiresIn)
@@ -79,6 +114,97 @@ struct AuthResultDTO: Decodable, Sendable {
             emailVerified: user.emailVerified,
             createdAt: user.createdAt,
             updatedAt: user.createdAt
+        )
+    }
+
+    func toVerification() -> VerificationChallenge? {
+        if verificationToken == nil && verificationCode == nil { return nil }
+        return VerificationChallenge(token: verificationToken, code: verificationCode)
+    }
+}
+
+struct TokenResponseDTO: Decodable, Sendable {
+    let accessToken: String
+    let refreshToken: String
+    let tokenType: String
+    let expiresIn: Int
+
+    func toSession() -> Session {
+        let expiresAt = Int64(Date().timeIntervalSince1970) + Int64(expiresIn)
+        return Session(accessToken: accessToken, refreshToken: refreshToken, expiresAt: expiresAt)
+    }
+}
+
+struct VerifyEmailBody: Encodable, Sendable {
+    let token: String?
+    let code: String?
+    let email: String?
+}
+
+struct ResendVerificationBody: Encodable, Sendable {
+    let email: String
+}
+
+struct VerificationResponseDTO: Decodable, Sendable {
+    let verificationToken: String?
+    let verificationCode: String?
+
+    func toChallenge() -> VerificationChallenge {
+        VerificationChallenge(token: verificationToken, code: verificationCode)
+    }
+}
+
+struct PasswordResetBody: Encodable, Sendable {
+    let email: String
+}
+
+struct PasswordResetConfirmBody: Encodable, Sendable {
+    let token: String
+    let newPassword: String
+}
+
+struct PasswordChangeBody: Encodable, Sendable {
+    let currentPassword: String
+    let newPassword: String
+}
+
+struct SuccessResponseDTO: Decodable, Sendable {
+    let success: Bool
+}
+
+struct StatusResponseDTO: Decodable, Sendable {
+    let status: String
+}
+
+struct MagicLinkBody: Encodable, Sendable {
+    let email: String
+    let redirectUrl: String?
+}
+
+struct MagicLinkVerifyBody: Encodable, Sendable {
+    let token: String
+}
+
+struct AuthSessionListDTO: Decodable, Sendable {
+    let sessions: [AuthSessionDTO]
+}
+
+struct AuthSessionDTO: Decodable, Sendable {
+    let id: String
+    let ip: String?
+    let userAgent: String?
+    let lastActivity: String
+    let createdAt: String
+    let current: Bool
+
+    func toAuthSession() -> AuthSession {
+        AuthSession(
+            id: id,
+            ip: ip,
+            userAgent: userAgent,
+            lastActivity: lastActivity,
+            createdAt: createdAt,
+            current: current
         )
     }
 }

@@ -55,6 +55,36 @@ palbase-ios/
 4. Anything inside one file → `private` or `fileprivate`
 5. **Default to most restrictive that compiles.** When in doubt, start `internal`.
 
+### Public Surface Whitelist (audit before every PR)
+
+Only these symbols are allowed to be `public`:
+
+**PalbaseCore:**
+- `enum Palbase` — `configure(apiKey:)`, `configure(_:)` ONLY
+- `struct PalbaseConfig` + properties + init
+- `protocol PalbaseError`
+- `enum PalbaseCoreError` (referenced by module errors)
+- `struct Session` + read-only properties (init is `package`)
+- `enum AuthStateEvent`
+- `typealias AuthStateCallback`
+- `typealias Unsubscribe`
+
+**Per module (e.g., PalbaseAuth):**
+- `struct Palbase{Module}` + `static var shared` + public methods
+- Module-specific `enum {Module}Error: PalbaseError`
+- Domain types: `User`, `AuthSuccess`, `MFAFactor`, etc. (read-only — init is `package`)
+
+**Forbidden public:**
+- `HttpClient`, `TokenManager`, `HTTPRequesting`, `RequestInterceptor`
+- `TokenStorage`, `KeychainTokenStorage`, `InMemoryTokenStorage`
+- `JSONDecoder/Encoder.palbaseDefault`, `EmptyResponse`, `PalbaseErrorEnvelope`
+- `RefreshFunction`, `Palbase.http`, `Palbase.tokens`, `Palbase.requireHTTP/Tokens`
+- DTO structs (`AuthResultDTO`, `UserInfoDTO`, etc.) — keep `internal`
+- Module client `init(http:tokens:)` — keep `package`
+- Domain type `init` — keep `package` (users only read, never construct)
+4. Anything inside one file → `private` or `fileprivate`
+5. **Default to most restrictive that compiles.** When in doubt, start `internal`.
+
 ### Domain types (read-only by user)
 
 - `Session`, `User`, `AuthSuccess` — public struct, but `init` is `package`

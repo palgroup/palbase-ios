@@ -3,8 +3,8 @@ import Foundation
 
 /// Auth module entry point. Use `PalbaseAuth.shared` after calling `Palbase.configure(apiKey:)`.
 public struct PalbaseAuth: Sendable {
-    private let http: HTTPRequesting
-    private let tokens: TokenManager
+    let http: HTTPRequesting
+    let tokens: TokenManager
 
     package init(http: HTTPRequesting, tokens: TokenManager) {
         self.http = http
@@ -103,12 +103,12 @@ public struct PalbaseAuth: Sendable {
         let session = dto.toSession()
         let user = dto.toUser()
         await tokens.setSession(session)
-        await wireRefresh()
+        await wireRefreshInternal()
 
         return AuthSuccess(user: user, session: session)
     }
 
-    private func wireRefresh() async {
+    func wireRefreshInternal() async {
         let httpRef = http
         let fn: RefreshFunction = { refreshToken in
             struct RefreshBody: Encodable, Sendable {
