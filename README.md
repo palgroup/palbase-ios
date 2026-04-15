@@ -67,7 +67,7 @@ let result = try await PalbaseAuth.shared.signIn(
 | [`PalbaseFunctions`](Sources/PalbaseFunctions/README.md) | 🚧 | Edge functions |
 | [`PalbaseFlags`](Sources/PalbaseFlags/README.md) | 🚧 | Feature flags |
 | [`PalbaseNotifications`](Sources/PalbaseNotifications/README.md) | 🚧 | Push / email / SMS |
-| [`PalbaseAnalytics`](Sources/PalbaseAnalytics/README.md) | 🚧 | Event tracking |
+| [`PalbaseAnalytics`](Sources/PalbaseAnalytics/README.md) | ✅ | Event tracking: capture, identify, alias, screen/page, offline queue, auto-flush |
 | [`PalbaseLinks`](Sources/PalbaseLinks/README.md) | 🚧 | Deep linking |
 | [`PalbaseCms`](Sources/PalbaseCms/README.md) | 🚧 | Content management |
 
