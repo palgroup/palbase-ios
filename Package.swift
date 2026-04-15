@@ -33,7 +33,7 @@ let package = Package(
         .target(name: "PalbaseStorage", dependencies: ["PalbaseCore"]),
         .target(name: "PalbaseRealtime", dependencies: ["PalbaseCore"]),
         .target(name: "PalbaseFunctions", dependencies: ["PalbaseCore"]),
-        .target(name: "PalbaseFlags", dependencies: ["PalbaseCore"]),
+        .target(name: "PalbaseFlags", dependencies: ["PalbaseCore", "PalbaseRealtime"]),
         .target(name: "PalbaseNotifications", dependencies: ["PalbaseCore"]),
         .target(name: "PalbaseAnalytics", dependencies: ["PalbaseCore"]),
         .target(name: "PalbaseLinks", dependencies: ["PalbaseCore"]),
@@ -45,6 +45,7 @@ let package = Package(
         .testTarget(name: "PalbaseStorageTests", dependencies: ["PalbaseStorage"]),
         .testTarget(name: "PalbaseRealtimeTests", dependencies: ["PalbaseRealtime"]),
         .testTarget(name: "PalbaseAnalyticsTests", dependencies: ["PalbaseAnalytics"]),
+        .testTarget(name: "PalbaseFlagsTests", dependencies: ["PalbaseFlags"]),
     ],
     swiftLanguageModes: [.v6]
 )

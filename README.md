@@ -65,7 +65,7 @@ let result = try await PalbaseAuth.shared.signIn(
 | [`PalbaseStorage`](Sources/PalbaseStorage/README.md) | ✅ | File storage: upload/download, signed URLs, transforms, resumable (TUS) |
 | [`PalbaseRealtime`](Sources/PalbaseRealtime/README.md) | ✅ | WebSocket: broadcast, presence, postgres_changes |
 | [`PalbaseFunctions`](Sources/PalbaseFunctions/README.md) | 🚧 | Edge functions |
-| [`PalbaseFlags`](Sources/PalbaseFlags/README.md) | 🚧 | Feature flags |
+| [`PalbaseFlags`](Sources/PalbaseFlags/README.md) | ✅ | Feature flags: typed values, cache, realtime sync, per-key listeners |
 | [`PalbaseNotifications`](Sources/PalbaseNotifications/README.md) | 🚧 | Push / email / SMS |
 | [`PalbaseAnalytics`](Sources/PalbaseAnalytics/README.md) | ✅ | Event tracking: capture, identify, alias, screen/page, offline queue, auto-flush |
 | [`PalbaseLinks`](Sources/PalbaseLinks/README.md) | 🚧 | Deep linking |
