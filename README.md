@@ -63,7 +63,7 @@ let result = try await PalbaseAuth.shared.signIn(
 | [`PalbaseDB`](Sources/PalbaseDB/README.md) | ✅ | Relational DB (PostgREST): typed queries, RPC, transactions |
 | [`PalbaseDocs`](Sources/PalbaseDocs/README.md) | ✅ | Document DB (Firestore-like): refs, queries, transforms, batch, transactions, listeners |
 | [`PalbaseStorage`](Sources/PalbaseStorage/README.md) | ✅ | File storage: upload/download, signed URLs, transforms, resumable (TUS) |
-| [`PalbaseRealtime`](Sources/PalbaseRealtime/README.md) | 🚧 | WebSocket subscriptions |
+| [`PalbaseRealtime`](Sources/PalbaseRealtime/README.md) | ✅ | WebSocket: broadcast, presence, postgres_changes |
 | [`PalbaseFunctions`](Sources/PalbaseFunctions/README.md) | 🚧 | Edge functions |
 | [`PalbaseFlags`](Sources/PalbaseFlags/README.md) | 🚧 | Feature flags |
 | [`PalbaseNotifications`](Sources/PalbaseNotifications/README.md) | 🚧 | Push / email / SMS |
