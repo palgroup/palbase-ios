@@ -46,6 +46,25 @@ let package = Package(
         .testTarget(name: "PalbaseRealtimeTests", dependencies: ["PalbaseRealtime"]),
         .testTarget(name: "PalbaseAnalyticsTests", dependencies: ["PalbaseAnalytics"]),
         .testTarget(name: "PalbaseFlagsTests", dependencies: ["PalbaseFlags"]),
+
+        // Live integration probe — Phase 8.
+        //
+        // Hits the real `app.dev.palbase.studio` control plane (Studio
+        // tRPC) plus the per-tenant Kong gateway. Skipped automatically
+        // when the `STUDIO_BASE` environment variable is not set, so
+        // `swift test` stays green in offline / CI runs.
+        //
+        // Run:
+        //   STUDIO_BASE=https://app.dev.palbase.studio \
+        //     swift test --filter PalbaseLive
+        .testTarget(
+            name: "PalbaseLiveTests",
+            dependencies: [
+                "PalbaseAuth",
+                "PalbaseDB",
+                "PalbaseDocs",
+            ]
+        ),
     ],
     swiftLanguageModes: [.v6]
 )
