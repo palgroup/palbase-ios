@@ -44,8 +44,12 @@ func configurePalbase(for project: Project) async throws {
     let cfg = URLSessionConfiguration.default
     cfg.protocolClasses = [DebugSnoopProtocol.self] + (cfg.protocolClasses ?? [])
     let session = URLSession(configuration: cfg)
+    // Phase 10: prove the SDK's `mode: .dev` resolves the right base
+    // URL on its own — no per-test url: override anymore. A user
+    // configuring their app with `Palbase.configure(apiKey:mode:.dev)`
+    // sees identical behaviour.
     Palbase.configure(
-        PalbaseConfig(apiKey: project.anonKey, url: project.apiBaseURL, urlSession: session)
+        PalbaseConfig(apiKey: project.anonKey, mode: .dev, urlSession: session)
     )
     if let auth = try? PalbaseAuth.shared {
         try? await auth.signOut()

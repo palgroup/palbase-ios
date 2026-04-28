@@ -1,7 +1,5 @@
 import Foundation
 
-private let palbaseDomain = "palbase.studio"
-
 /// Default HTTP client implementation backed by URLSession.
 package actor HttpClient: HTTPRequesting {
     private let config: PalbaseConfig
@@ -144,7 +142,7 @@ package actor HttpClient: HTTPRequesting {
             )
         }
 
-        guard let url = URL(string: "https://\(ref).\(palbaseDomain)") else {
+        guard let url = URL(string: "https://\(ref).\(config.mode.domain)") else {
             throw PalbaseCoreError.invalidConfiguration(message: "Could not construct base URL from API key.")
         }
         return url

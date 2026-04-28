@@ -49,7 +49,7 @@ struct TodoApiItem: Codable, Sendable, Equatable {
 struct TodoDoc: Codable, Sendable, Equatable {
     var title: String
     var done: Bool
-    var _owner: String
+    var owner: String
 }
 
 /// User fixture — fresh signup + cached session token so the suite can
@@ -183,7 +183,7 @@ struct TodoAppLiveTests {
         for i in 0..<3 {
             let id = "alice-\(stamp)-\(i)"
             let ref = try aliceDocs.document("todos/\(id)", of: TodoDoc.self)
-            _ = try await ref.set(TodoDoc(title: "alice todo \(i)", done: false, _owner: alice.userId))
+            _ = try await ref.set(TodoDoc(title: "alice todo \(i)", done: false, owner: alice.userId))
         }
 
         // Bob writes 2 todos.
@@ -194,11 +194,11 @@ struct TodoAppLiveTests {
         for i in 0..<2 {
             let id = "bob-\(stamp)-\(i)"
             let ref = try bobDocs.document("todos/\(id)", of: TodoDoc.self)
-            _ = try await ref.set(TodoDoc(title: "bob todo \(i)", done: false, _owner: bob.userId))
+            _ = try await ref.set(TodoDoc(title: "bob todo \(i)", done: false, owner: bob.userId))
         }
 
         // Backend handler reads each id via ctx.palbase.documents.get
-        // and post-filters by _owner. We pass each user's own ids to
+        // and post-filters by owner. We pass each user's own ids to
         // confirm:
         //   1. They get their own todos back (good path).
         //   2. They DON'T get the OTHER user's todos when they
@@ -293,7 +293,7 @@ struct TodoAppLiveTests {
         let docs = try PalbaseDocs.shared
         let id = "be-todo-\(stamp)"
         let ref = try docs.document("todos/\(id)", of: TodoDoc.self)
-        _ = try await ref.set(TodoDoc(title: "alice via backend test", done: false, _owner: alice.userId))
+        _ = try await ref.set(TodoDoc(title: "alice via backend test", done: false, owner: alice.userId))
 
         // Now call /api/todos as alice — server-side handler reads
         // each id via ctx.palbase.documents and filters to alice.uid.

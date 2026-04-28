@@ -14,8 +14,16 @@ public enum Palbase {
     private static let state = State()
 
     /// Configure the SDK with a single API key. Most apps use this.
+    /// Targets the production cluster by default — for dev clusters,
+    /// pass `mode: .dev`.
     public static func configure(apiKey: String) {
         configure(PalbaseConfig(apiKey: apiKey))
+    }
+
+    /// Configure the SDK with a single API key + environment mode.
+    /// `.dev` swaps the SDK's base URL to `<ref>.dev.palbase.studio`.
+    public static func configure(apiKey: String, mode: PalbaseMode) {
+        configure(PalbaseConfig(apiKey: apiKey, mode: mode))
     }
 
     /// Configure with full options (custom URL, URLSession, timeouts, etc.).

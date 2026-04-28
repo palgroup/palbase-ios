@@ -1,14 +1,46 @@
 import Foundation
 
-/// Configuration for the SDK. Apps usually call `Palbase.configure(apiKey:)` —
-/// only use this struct when you need to override transport behavior (custom URL,
-/// timeouts, custom URLSession for testing).
+/// Which Palbase environment the SDK should talk to.
+///
+/// Apps deployed against the production cluster use `.prod` (the
+/// default — `<ref>.palbase.studio`). Internal builds and developer
+/// previews target the dev cluster via `.dev`
+/// (`<ref>.dev.palbase.studio`). The mapping is identical to the
+/// `palbase` CLI's `--mode` flag, so a key minted in dev keeps working
+/// when you bring it into Xcode by toggling one parameter.
+///
+/// Tests + custom deployments can still override `PalbaseConfig.url`
+/// directly; that wins over `mode`.
+public enum PalbaseMode: String, Sendable {
+    case prod
+    case dev
+
+    /// Public domain suffix the SDK appends to the API key's project
+    /// ref when building the base URL.
+    public var domain: String {
+        switch self {
+        case .prod: return "palbase.studio"
+        case .dev:  return "dev.palbase.studio"
+        }
+    }
+}
+
+/// Configuration for the SDK. Apps usually call
+/// `Palbase.configure(apiKey:)` (or `.configure(apiKey:mode:)` for dev
+/// builds) — only use this struct directly when you need to override
+/// transport behavior (custom URL, timeouts, custom URLSession for
+/// testing).
 public struct PalbaseConfig: Sendable {
     /// API key in `pb_{ref}_{random}` format.
     public let apiKey: String
 
-    /// Override the base URL. Defaults to `https://{ref}.palbase.studio` derived from the API key.
+    /// Override the base URL. Defaults to `https://{ref}.{mode.domain}`
+    /// derived from the API key. Setting this wins over `mode`.
     public let url: String?
+
+    /// Environment to target. `.prod` by default; `.dev` swaps the
+    /// domain to `*.dev.palbase.studio`. Ignored when `url` is set.
+    public let mode: PalbaseMode
 
     /// Service role key (server-only). When set, used instead of the user's access token.
     public let serviceRoleKey: String?
@@ -31,6 +63,7 @@ public struct PalbaseConfig: Sendable {
     public init(
         apiKey: String,
         url: String? = nil,
+        mode: PalbaseMode = .prod,
         serviceRoleKey: String? = nil,
         headers: [String: String] = [:],
         urlSession: URLSession = .shared,
@@ -40,6 +73,7 @@ public struct PalbaseConfig: Sendable {
     ) {
         self.apiKey = apiKey
         self.url = url
+        self.mode = mode
         self.serviceRoleKey = serviceRoleKey
         self.headers = headers
         self.urlSession = urlSession
