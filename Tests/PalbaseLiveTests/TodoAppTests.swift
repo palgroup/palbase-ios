@@ -16,6 +16,14 @@
 //
 // Runs only when STUDIO_BASE + TODOAPP_REF + TODOAPP_ANON_KEY are set
 // in the environment.
+//
+// NOTE: run with `swift test --no-parallel` (or `--num-workers 1`).
+// `.serialized` keeps test order within this suite, but Swift Testing
+// 0.x's CLI runner still parallelises method execution by default,
+// which causes overlapping signUp/login bursts that some auth-pool
+// + paldocs cold-paths can't handle within Kong's 1.5s timeout.
+// Each test in isolation passes; running the whole suite with
+// --no-parallel passes 4/4.
 import Foundation
 import Testing
 import PalbaseAuth
