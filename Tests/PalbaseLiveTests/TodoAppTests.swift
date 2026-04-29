@@ -123,6 +123,7 @@ actor TodoSession {
 }
 
 @Suite(
+    .serialized,
     .enabled(if: TodoAppConfig.enabled,
              "TODOAPP_REF + TODOAPP_ANON_KEY + STUDIO_BASE not set; TodoApp probe skipped"))
 struct TodoAppLiveTests {
