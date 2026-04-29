@@ -144,12 +144,7 @@ public struct InboxUnreadCount: Codable, Sendable {
 
 /// Per-channel category opt-in/out map.
 ///
+/// Wire shape is flat: `{ "push": { "marketing": false }, "email": {...} }`.
 /// Keys are channel names ("push", "email", "sms", "inbox"), values are
 /// `category -> allowed` booleans. Missing entries default to opt-in.
-public struct NotificationPreferences: Codable, Sendable {
-    public var preferences: [String: [String: Bool]]
-
-    public init(preferences: [String: [String: Bool]] = [:]) {
-        self.preferences = preferences
-    }
-}
+public typealias NotificationPreferences = [String: [String: Bool]]
