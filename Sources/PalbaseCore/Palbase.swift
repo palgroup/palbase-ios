@@ -26,19 +26,51 @@ public enum Palbase {
         configure(PalbaseConfig(apiKey: apiKey, mode: mode))
     }
 
+    /// Configure the SDK with a single API key + environment mode and
+    /// route `pb.backend.call(...)` to a custom URL (typically a local
+    /// `palbase backend dev` server). Auth/DB/Docs/Storage still go to
+    /// the cluster derived from `mode`.
+    public static func configure(apiKey: String, mode: PalbaseMode, backendURL: String) {
+        configure(PalbaseConfig(apiKey: apiKey, backendURL: backendURL, mode: mode))
+    }
+
     /// Configure with full options (custom URL, URLSession, timeouts, etc.).
     public static func configure(_ config: PalbaseConfig) {
         let storage = KeychainTokenStorage()
         let tokens = TokenManager(storage: storage)
         let http = HttpClient(config: config, tokens: tokens)
-        state.set(config: config, tokens: tokens, http: http)
+
+        // Backend RPC may target a different host (local dev-server)
+        // while still sharing TokenManager so the user's auth session
+        // resolves at both endpoints. Build a second HttpClient with
+        // an overridden `url` only when backendURL was set.
+        let backendHttp: HTTPRequesting
+        if let backendURL = config.backendURL {
+            let backendCfg = PalbaseConfig(
+                apiKey: config.apiKey,
+                url: backendURL,
+                backendURL: nil,
+                mode: config.mode,
+                serviceRoleKey: config.serviceRoleKey,
+                headers: config.headers,
+                urlSession: config.urlSession,
+                requestTimeout: config.requestTimeout,
+                maxRetries: config.maxRetries,
+                initialBackoffMs: config.initialBackoffMs
+            )
+            backendHttp = HttpClient(config: backendCfg, tokens: tokens)
+        } else {
+            backendHttp = http
+        }
+
+        state.set(config: config, tokens: tokens, http: http, backendHttp: backendHttp)
 
         // Hydrate session from Keychain in background, then wire the
-        // refresh function so HttpClient/PalbaseBackend can trade an
-        // expired access token for a fresh one. Without this, sessions
-        // hydrated on app launch (before signIn is called this run)
-        // never refresh and every authenticated request 401s once the
-        // 30-min access token TTL passes.
+        // refresh function so HttpClient can trade an expired access
+        // token for a fresh one. Without this, sessions hydrated on
+        // app launch (before signIn is called this run) never refresh
+        // and every authenticated request 401s once the access token's
+        // 30-min TTL passes.
         Task {
             await tokens.loadFromStorage()
             await wireRefreshFunction(http: http, tokens: tokens)
@@ -48,6 +80,8 @@ public enum Palbase {
     /// Build the refresh function that trades a refresh token for a new
     /// session by hitting `/auth/refresh`. Lives in PalbaseCore so the
     /// wire-up doesn't depend on signIn being called this app launch.
+    /// HttpClient's pre-flight refresh skips the `/auth/refresh` path
+    /// itself to avoid the call recursing into itself.
     private static func wireRefreshFunction(http: HTTPRequesting, tokens: TokenManager) async {
         struct RefreshBody: Encodable, Sendable { let refreshToken: String }
         struct RefreshResponse: Decodable, Sendable {
@@ -74,12 +108,10 @@ public enum Palbase {
 
     package static var config: PalbaseConfig? { state.config }
     package static var http: HTTPRequesting? { state.http }
+    package static var backendHttp: HTTPRequesting? { state.backendHttp }
     package static var tokens: TokenManager? { state.tokens }
 
     /// API key supplied to `configure(apiKey:)`. `nil` until configured.
-    /// Public accessor so `PalbaseBackend.shared` (and any future module
-    /// that needs the raw apikey for direct HTTP) can read it without
-    /// reaching into HttpClient.
     public static var apiKey: String? { state.config?.apiKey }
 
     /// Project ref derived from the apikey (`pb_<ref>_c<random>` /
@@ -89,24 +121,6 @@ public enum Palbase {
         let parts = key.split(separator: "_", maxSplits: 2, omittingEmptySubsequences: false)
         guard parts.count >= 2 else { return nil }
         return String(parts[1])
-    }
-
-    /// Public host the SDK targets. Order of precedence:
-    /// (1) `PalbaseConfig.url` if explicitly set,
-    /// (2) the configured `PalbaseMode`'s domain (`palbase.studio` or
-    ///     `dev.palbase.studio`),
-    /// (3) `nil` when nothing is configured yet.
-    /// Used by `PalbaseBackend` to build per-tenant URLs without
-    /// reaching into HttpClient.
-    public static var host: String? {
-        if let configured = state.config?.url {
-            if let url = URL(string: configured), let host = url.host {
-                return host
-            }
-            return configured
-        }
-        guard let cfg = state.config else { return nil }
-        return cfg.mode.domain
     }
 
     package static func requireHTTP() throws(PalbaseCoreError) -> HTTPRequesting {
@@ -126,6 +140,7 @@ final class State: @unchecked Sendable {
     private var _config: PalbaseConfig?
     private var _tokens: TokenManager?
     private var _http: HTTPRequesting?
+    private var _backendHttp: HTTPRequesting?
 
     var config: PalbaseConfig? {
         lock.lock(); defer { lock.unlock() }
@@ -142,10 +157,16 @@ final class State: @unchecked Sendable {
         return _http
     }
 
-    func set(config: PalbaseConfig, tokens: TokenManager, http: HTTPRequesting) {
+    var backendHttp: HTTPRequesting? {
+        lock.lock(); defer { lock.unlock() }
+        return _backendHttp
+    }
+
+    func set(config: PalbaseConfig, tokens: TokenManager, http: HTTPRequesting, backendHttp: HTTPRequesting) {
         lock.lock(); defer { lock.unlock() }
         _config = config
         _tokens = tokens
         _http = http
+        _backendHttp = backendHttp
     }
 }

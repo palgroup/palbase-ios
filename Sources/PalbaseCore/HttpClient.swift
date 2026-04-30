@@ -49,8 +49,14 @@ package actor HttpClient: HTTPRequesting {
         body: (any Encodable & Sendable)?,
         headers: [String: String]
     ) async throws(PalbaseCoreError) -> (data: Data, status: Int) {
-        // Auto-refresh expired token before request
-        if await tokens.isExpired, await tokens.refreshFunction != nil, await tokens.refreshToken != nil {
+        // Auto-refresh expired token before request — but never on the
+        // refresh endpoint itself, otherwise refresh() → HttpClient
+        // pre-flight → refresh() recurses and deadlocks on
+        // TokenManager's single-flight Task awaiting its own value.
+        if !path.hasPrefix("/auth/refresh"),
+           await tokens.isExpired,
+           await tokens.refreshFunction != nil,
+           await tokens.refreshToken != nil {
             _ = try? await tokens.refreshSession()
         }
 

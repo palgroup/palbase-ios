@@ -38,6 +38,13 @@ public struct PalbaseConfig: Sendable {
     /// derived from the API key. Setting this wins over `mode`.
     public let url: String?
 
+    /// Override the URL `PalbaseBackend` (typed RPC + /openapi.json)
+    /// targets. When `nil`, backend calls go through `url` like every
+    /// other module. Set this to point at a local `palbase backend dev`
+    /// server (`http://localhost:4000`) without changing where
+    /// auth/db/docs/storage talk to.
+    public let backendURL: String?
+
     /// Environment to target. `.prod` by default; `.dev` swaps the
     /// domain to `*.dev.palbase.studio`. Ignored when `url` is set.
     public let mode: PalbaseMode
@@ -63,6 +70,7 @@ public struct PalbaseConfig: Sendable {
     public init(
         apiKey: String,
         url: String? = nil,
+        backendURL: String? = nil,
         mode: PalbaseMode = .prod,
         serviceRoleKey: String? = nil,
         headers: [String: String] = [:],
@@ -73,6 +81,7 @@ public struct PalbaseConfig: Sendable {
     ) {
         self.apiKey = apiKey
         self.url = url
+        self.backendURL = backendURL
         self.mode = mode
         self.serviceRoleKey = serviceRoleKey
         self.headers = headers
