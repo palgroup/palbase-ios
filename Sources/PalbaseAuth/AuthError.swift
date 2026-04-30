@@ -91,23 +91,48 @@ public enum AuthError: PalbaseError {
         }
     }
 
+    /// Map a server-side error code to a typed AuthError case. Used by
+    /// both the envelope decoder and the transport-error fallback so a
+    /// fresh `password_too_short` from palauth ends up as
+    /// `.weakPassword`, not the catch-all `.http(...)`.
+    private static func mapServerCode(_ code: String, message: String, requestId: String?) -> AuthError? {
+        switch code {
+        // Credentials / sign-in
+        case "invalid_credentials", "invalid_login_credentials":
+            return .invalidCredentials(message: message)
+        case "user_not_found":
+            return .userNotFound(message: message)
+        // Sign-up / password
+        case "email_already_in_use", "user_already_exists", "email_exists":
+            return .emailAlreadyInUse(message: message)
+        case "weak_password", "password_too_short", "password_too_weak", "password_too_long":
+            return .weakPassword(message: message)
+        // Email verification
+        case "email_not_verified", "email_unverified":
+            return .emailNotVerified(message: message)
+        // Sessions
+        case "session_expired", "token_expired", "invalid_token", "unauthorized":
+            return .sessionExpired(message: message)
+        // MFA
+        case "mfa_invalid_code", "invalid_mfa_code":
+            return .mfaInvalidCode(message: message)
+        case "mfa_factor_not_found":
+            return .mfaFactorNotFound(message: message)
+        default:
+            return nil
+        }
+    }
+
     /// Map a generic envelope from the server into a typed AuthError case.
     static func from(envelope: PalbaseErrorEnvelope) -> AuthError {
-        switch envelope.code {
-        case "invalid_credentials": return .invalidCredentials(message: envelope.message)
-        case "user_not_found": return .userNotFound(message: envelope.message)
-        case "email_already_in_use": return .emailAlreadyInUse(message: envelope.message)
-        case "weak_password": return .weakPassword(message: envelope.message)
-        case "email_not_verified": return .emailNotVerified(message: envelope.message)
-        case "mfa_required":
+        if envelope.code == "mfa_required" {
             let challengeId = envelope.details?["challenge_id"] ?? ""
             return .mfaRequired(challengeId: challengeId)
-        case "session_expired": return .sessionExpired(message: envelope.message)
-        case "mfa_invalid_code": return .mfaInvalidCode(message: envelope.message)
-        case "mfa_factor_not_found": return .mfaFactorNotFound(message: envelope.message)
-        default:
-            return .server(code: envelope.code, message: envelope.message, requestId: envelope.requestId)
         }
+        if let mapped = mapServerCode(envelope.code, message: envelope.message, requestId: envelope.requestId) {
+            return mapped
+        }
+        return .server(code: envelope.code, message: envelope.message, requestId: envelope.requestId)
     }
 
     /// Map transport-level core errors to module-specific cases (so PalbaseCoreError
@@ -120,7 +145,13 @@ public enum AuthError: PalbaseError {
         case .rateLimited(let r): return .rateLimited(retryAfter: r)
         case .server(let s, let m): return .serverError(status: s, message: m)
         case .http(let s, let c, let m, let id):
-            // Try to decode as auth-specific via code mapping
+            // First try the auth-specific code map so server codes
+            // like password_too_short / invalid_credentials surface as
+            // typed cases. Falls back to .http when the code is
+            // genuinely outside the auth domain.
+            if let mapped = mapServerCode(c, message: m, requestId: id) {
+                return mapped
+            }
             return .http(status: s, code: c, message: m, requestId: id)
         case .invalidConfiguration(let m): return .network(message: m)
         case .notConfigured: return .notConfigured
