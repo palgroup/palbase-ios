@@ -24,6 +24,7 @@ let package = Package(
         .library(name: "PalbaseAnalytics", targets: ["PalbaseAnalytics"]),
         .library(name: "PalbaseLinks", targets: ["PalbaseLinks"]),
         .library(name: "PalbaseCms", targets: ["PalbaseCms"]),
+        .library(name: "PalbaseBackend", targets: ["PalbaseBackend"]),
     ],
     targets: [
         .target(name: "PalbaseCore"),
@@ -38,6 +39,7 @@ let package = Package(
         .target(name: "PalbaseAnalytics", dependencies: ["PalbaseCore"]),
         .target(name: "PalbaseLinks", dependencies: ["PalbaseCore"]),
         .target(name: "PalbaseCms", dependencies: ["PalbaseCore"]),
+        .target(name: "PalbaseBackend", dependencies: ["PalbaseCore"]),
 
         .testTarget(name: "PalbaseCoreTests", dependencies: ["PalbaseCore"]),
         .testTarget(name: "PalbaseDBTests", dependencies: ["PalbaseDB"]),
@@ -46,6 +48,7 @@ let package = Package(
         .testTarget(name: "PalbaseRealtimeTests", dependencies: ["PalbaseRealtime"]),
         .testTarget(name: "PalbaseAnalyticsTests", dependencies: ["PalbaseAnalytics"]),
         .testTarget(name: "PalbaseFlagsTests", dependencies: ["PalbaseFlags"]),
+        .testTarget(name: "PalbaseBackendTests", dependencies: ["PalbaseBackend"]),
 
         // Live integration probe — Phase 8.
         //

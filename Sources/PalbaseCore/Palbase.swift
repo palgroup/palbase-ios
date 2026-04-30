@@ -41,6 +41,39 @@ public enum Palbase {
     package static var http: HTTPRequesting? { state.http }
     package static var tokens: TokenManager? { state.tokens }
 
+    /// API key supplied to `configure(apiKey:)`. `nil` until configured.
+    /// Public accessor so `PalbaseBackend.shared` (and any future module
+    /// that needs the raw apikey for direct HTTP) can read it without
+    /// reaching into HttpClient.
+    public static var apiKey: String? { state.config?.apiKey }
+
+    /// Project ref derived from the apikey (`pb_<ref>_c<random>` /
+    /// `pb_<ref>_s<random>`). `nil` when no apikey has been set.
+    public static var endpointRef: String? {
+        guard let key = state.config?.apiKey else { return nil }
+        let parts = key.split(separator: "_", maxSplits: 2, omittingEmptySubsequences: false)
+        guard parts.count >= 2 else { return nil }
+        return String(parts[1])
+    }
+
+    /// Public host the SDK targets. Order of precedence:
+    /// (1) `PalbaseConfig.url` if explicitly set,
+    /// (2) the configured `PalbaseMode`'s domain (`palbase.studio` or
+    ///     `dev.palbase.studio`),
+    /// (3) `nil` when nothing is configured yet.
+    /// Used by `PalbaseBackend` to build per-tenant URLs without
+    /// reaching into HttpClient.
+    public static var host: String? {
+        if let configured = state.config?.url {
+            if let url = URL(string: configured), let host = url.host {
+                return host
+            }
+            return configured
+        }
+        guard let cfg = state.config else { return nil }
+        return cfg.mode.domain
+    }
+
     package static func requireHTTP() throws(PalbaseCoreError) -> HTTPRequesting {
         guard let http = state.http else { throw PalbaseCoreError.notConfigured }
         return http
