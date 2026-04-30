@@ -21,6 +21,7 @@ public enum BackendError: Error, Sendable {
 public actor PalbaseBackend {
     private let apiKey: String
     private let endpointRef: String
+    private let tokens: TokenManager?
     private let urlSession: URLSession
     private let requestTimeout: TimeInterval
 
@@ -30,11 +31,13 @@ public actor PalbaseBackend {
     package init(
         apiKey: String,
         endpointRef: String,
+        tokens: TokenManager? = nil,
         urlSession: URLSession = .shared,
         requestTimeout: TimeInterval = 30
     ) {
         self.apiKey = apiKey
         self.endpointRef = endpointRef
+        self.tokens = tokens
         self.urlSession = urlSession
         self.requestTimeout = requestTimeout
     }
@@ -46,7 +49,7 @@ public actor PalbaseBackend {
         get throws(BackendError) {
             guard let apiKey = Palbase.apiKey else { throw BackendError.notConfigured }
             let endpointRef = Palbase.endpointRef ?? PalbaseBackend.parseEndpointRef(from: apiKey)
-            return PalbaseBackend(apiKey: apiKey, endpointRef: endpointRef)
+            return PalbaseBackend(apiKey: apiKey, endpointRef: endpointRef, tokens: Palbase.tokens)
         }
     }
 
@@ -94,7 +97,14 @@ public actor PalbaseBackend {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(apiKey, forHTTPHeaderField: "apikey")
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        // Only attach Authorization when a real user session exists.
+        // Sending the apikey itself as Bearer would be parsed by the
+        // backend-runtime auth pipeline as a JWT to verify and 401.
+        // When signed out, the apikey header alone is enough for Kong
+        // to gate the request and `auth.required: false` endpoints.
+        if let userBearer = await currentUserBearer() {
+            request.setValue("Bearer \(userBearer)", forHTTPHeaderField: "Authorization")
+        }
         for (k, v) in headers {
             request.setValue(v, forHTTPHeaderField: k)
         }
@@ -134,7 +144,9 @@ public actor PalbaseBackend {
         request.httpMethod = "GET"
         request.timeoutInterval = requestTimeout
         request.setValue(apiKey, forHTTPHeaderField: "apikey")
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        if let userBearer = await currentUserBearer() {
+            request.setValue("Bearer \(userBearer)", forHTTPHeaderField: "Authorization")
+        }
         let (data, response): (Data, URLResponse)
         do { (data, response) = try await urlSession.data(for: request) }
         catch { throw BackendError.transport(error) }
@@ -148,6 +160,16 @@ public actor PalbaseBackend {
     }
 
     // MARK: - Internals
+
+    // When a user session is active, return their access token so the
+    // backend-runtime auth pipeline can resolve `ctx.user`. Returns nil
+    // when signed out — caller should skip the Authorization header
+    // entirely in that case (sending the apikey as Bearer would be
+    // parsed as an invalid JWT and 401).
+    private func currentUserBearer() async -> String? {
+        guard let tokens else { return nil }
+        return await tokens.accessToken
+    }
 
     /// Resolve the environment to a concrete base URL. Auto-discover
     /// caches the resolved URL for the session; `.custom` returns
