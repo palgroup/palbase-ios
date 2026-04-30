@@ -166,8 +166,18 @@ public actor PalbaseBackend {
     // when signed out — caller should skip the Authorization header
     // entirely in that case (sending the apikey as Bearer would be
     // parsed as an invalid JWT and 401).
+    //
+    // Mirrors HttpClient's pre-flight refresh: if the access token is
+    // expired and we have a refresh function + refresh token, refresh
+    // first so the call doesn't hit a 401 invalid_token. Same recipe
+    // PalbaseAuth wires up at sign-in (TokenManager.setRefreshFunction).
     private func currentUserBearer() async -> String? {
         guard let tokens else { return nil }
+        if await tokens.isExpired,
+           await tokens.refreshFunction != nil,
+           await tokens.refreshToken != nil {
+            _ = try? await tokens.refreshSession()
+        }
         return await tokens.accessToken
     }
 
