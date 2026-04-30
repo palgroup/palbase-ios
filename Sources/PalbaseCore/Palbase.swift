@@ -33,8 +33,43 @@ public enum Palbase {
         let http = HttpClient(config: config, tokens: tokens)
         state.set(config: config, tokens: tokens, http: http)
 
-        // Hydrate session from Keychain in background
-        Task { await tokens.loadFromStorage() }
+        // Hydrate session from Keychain in background, then wire the
+        // refresh function so HttpClient/PalbaseBackend can trade an
+        // expired access token for a fresh one. Without this, sessions
+        // hydrated on app launch (before signIn is called this run)
+        // never refresh and every authenticated request 401s once the
+        // 30-min access token TTL passes.
+        Task {
+            await tokens.loadFromStorage()
+            await wireRefreshFunction(http: http, tokens: tokens)
+        }
+    }
+
+    /// Build the refresh function that trades a refresh token for a new
+    /// session by hitting `/auth/refresh`. Lives in PalbaseCore so the
+    /// wire-up doesn't depend on signIn being called this app launch.
+    private static func wireRefreshFunction(http: HTTPRequesting, tokens: TokenManager) async {
+        struct RefreshBody: Encodable, Sendable { let refreshToken: String }
+        struct RefreshResponse: Decodable, Sendable {
+            let accessToken: String
+            let refreshToken: String
+            let expiresIn: Int
+        }
+        let fn: RefreshFunction = { refreshToken in
+            let dto: RefreshResponse = try await http.request(
+                method: "POST",
+                path: "/auth/refresh",
+                body: RefreshBody(refreshToken: refreshToken),
+                headers: [:]
+            )
+            let expiresAt = Int64(Date().timeIntervalSince1970) + Int64(dto.expiresIn)
+            return Session(
+                accessToken: dto.accessToken,
+                refreshToken: dto.refreshToken,
+                expiresAt: expiresAt
+            )
+        }
+        await tokens.setRefreshFunction(fn)
     }
 
     package static var config: PalbaseConfig? { state.config }
