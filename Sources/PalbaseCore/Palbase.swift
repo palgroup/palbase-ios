@@ -81,28 +81,38 @@ public enum Palbase {
     }
 
     /// Build the refresh function that trades a refresh token for a new
-    /// session by hitting `/auth/refresh`. Lives in PalbaseCore so the
-    /// wire-up doesn't depend on signIn being called this app launch.
-    /// HttpClient's pre-flight refresh skips the `/auth/refresh` path
-    /// itself to avoid the call recursing into itself.
+    /// session by hitting `/auth/token/refresh`. Lives in PalbaseCore so
+    /// the wire-up doesn't depend on signIn being called this app launch.
+    /// HttpClient's pre-flight refresh skips the `/auth/token/refresh`
+    /// path itself to avoid the call recursing into itself.
     private static func wireRefreshFunction(http: HTTPRequesting, tokens: TokenManager) async {
-        struct RefreshBody: Encodable, Sendable { let refreshToken: String }
+        // Wire body matches palauth's refreshTokenRequest:
+        // - path: /auth/token/refresh (NOT /auth/refresh — that route
+        //   doesn't exist; an earlier draft of this file targeted it,
+        //   so refresh silently 404'd and HttpClient's `try?` ate the
+        //   error → expired access token kept getting sent → 401).
+        // - body field: snake_case refresh_token.
+        // - response field: snake_case refresh_token / access_token /
+        //   expires_in.
+        struct RefreshBody: Encodable, Sendable {
+            let refresh_token: String
+        }
         struct RefreshResponse: Decodable, Sendable {
-            let accessToken: String
-            let refreshToken: String
-            let expiresIn: Int
+            let access_token: String
+            let refresh_token: String
+            let expires_in: Int
         }
         let fn: RefreshFunction = { refreshToken in
             let dto: RefreshResponse = try await http.request(
                 method: "POST",
-                path: "/auth/refresh",
-                body: RefreshBody(refreshToken: refreshToken),
+                path: "/auth/token/refresh",
+                body: RefreshBody(refresh_token: refreshToken),
                 headers: [:]
             )
-            let expiresAt = Int64(Date().timeIntervalSince1970) + Int64(dto.expiresIn)
+            let expiresAt = Int64(Date().timeIntervalSince1970) + Int64(dto.expires_in)
             return Session(
-                accessToken: dto.accessToken,
-                refreshToken: dto.refreshToken,
+                accessToken: dto.access_token,
+                refreshToken: dto.refresh_token,
                 expiresAt: expiresAt
             )
         }

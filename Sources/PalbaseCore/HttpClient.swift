@@ -53,7 +53,7 @@ package actor HttpClient: HTTPRequesting {
         // refresh endpoint itself, otherwise refresh() → HttpClient
         // pre-flight → refresh() recurses and deadlocks on
         // TokenManager's single-flight Task awaiting its own value.
-        if !path.hasPrefix("/auth/refresh") {
+        if !path.hasPrefix("/auth/token/refresh") {
             // Block until boot finished so we observe the post-hydration
             // refreshFunction + cachedSession, not the pre-hydration nil
             // state that would silently skip the refresh below.
