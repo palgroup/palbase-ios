@@ -64,10 +64,10 @@ package actor TokenManager {
         notify(.sessionSet, session)
     }
 
-    package func clearSession() async {
+    package func clearSession(reason: SessionClearReason = .signOut) async {
         cachedSession = nil
         await storage.clear()
-        notify(.sessionCleared, nil)
+        notify(.sessionCleared(reason: reason), nil)
     }
 
     package func setRefreshFunction(_ fn: @escaping RefreshFunction) {
@@ -75,6 +75,12 @@ package actor TokenManager {
     }
 
     /// Collapses concurrent refresh calls into a single in-flight task.
+    ///
+    /// On 4xx the server has decisively rejected the refresh_token (revoked,
+    /// reused, expired beyond grace, account banned). The local session is
+    /// then unrecoverable — clear it and emit `sessionCleared(.refreshFailed)`
+    /// so the host app can route to login. Transient failures (5xx, network)
+    /// leave the session intact so the next attempt can succeed.
     @discardableResult
     package func refreshSession() async throws -> Session {
         guard let refreshToken = cachedSession?.refreshToken,
@@ -86,16 +92,43 @@ package actor TokenManager {
             return try await existing.value
         }
 
-        let task = Task<Session, Error> {
-            defer { refreshTask = nil }
-            let newSession = try await fn(refreshToken)
-            await setSession(newSession)
-            notify(.tokenRefreshed, newSession)
-            return newSession
+        let task = Task<Session, Error> { [self] in
+            defer { Task { await self.clearRefreshTask() } }
+            do {
+                let newSession = try await fn(refreshToken)
+                await self.setSession(newSession)
+                await self.fireRefreshed(newSession)
+                return newSession
+            } catch let err as PalbaseCoreError {
+                if Self.isFatalRefreshError(err) {
+                    await self.clearSession(reason: .refreshFailed)
+                }
+                throw err
+            }
         }
         refreshTask = task
 
         return try await task.value
+    }
+
+    /// 4xx (other than 408 / 429) means the server has decisively rejected
+    /// the refresh token. 5xx, network, decoding errors are transient.
+    private static func isFatalRefreshError(_ err: PalbaseCoreError) -> Bool {
+        switch err {
+        case .http(let status, _, _, _):
+            return (400..<500).contains(status) && status != 408 && status != 429
+        case .rateLimited, .server, .network, .decoding, .encoding,
+             .invalidConfiguration, .notConfigured, .tokenRefreshFailed:
+            return false
+        }
+    }
+
+    private func clearRefreshTask() {
+        refreshTask = nil
+    }
+
+    private func fireRefreshed(_ session: Session) {
+        notify(.tokenRefreshed, session)
     }
 
     /// Subscribe to auth state changes.

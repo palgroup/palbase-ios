@@ -19,10 +19,22 @@ public struct Session: Sendable, Equatable, Codable {
     }
 }
 
+/// Why the SDK cleared the local session. Surfaced to host apps so
+/// they can distinguish "user pressed Sign Out" from "server says
+/// you're no longer authenticated, take me to login."
+public enum SessionClearReason: Sendable, Equatable {
+    /// Caller invoked `signOut()`.
+    case signOut
+    /// Refresh token was rejected by the server (revoked, reused,
+    /// expired beyond grace, account deleted/banned). The keychain
+    /// is now empty; the host app should route to login.
+    case refreshFailed
+}
+
 /// Auth state events emitted by `TokenManager`.
-public enum AuthStateEvent: Sendable {
+public enum AuthStateEvent: Sendable, Equatable {
     case sessionSet
-    case sessionCleared
+    case sessionCleared(reason: SessionClearReason)
     case tokenRefreshed
 }
 

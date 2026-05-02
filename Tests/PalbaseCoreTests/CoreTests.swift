@@ -77,6 +77,102 @@ struct TokenManagerTests {
         #expect(elapsed < .milliseconds(5))
     }
 
+    @Test("refreshSession 4xx clears session and emits sessionCleared(.refreshFailed)")
+    func refreshFatalClears() async throws {
+        let tm = TokenManager()
+        let s = Session(accessToken: "old", refreshToken: "rt", expiresAt: 0)
+        await tm.setSession(s)
+
+        // Server says: this refresh_token is dead. (revoked / reused / banned.)
+        await tm.setRefreshFunction { _ in
+            throw PalbaseCoreError.http(status: 401, code: "invalid_token", message: "revoked")
+        }
+
+        let received = ReceivedEvents()
+        let unsubscribe = await tm.onAuthStateChange { event, _ in
+            Task { await received.append(event) }
+        }
+        defer { unsubscribe() }
+
+        // refresh propagates the fatal error.
+        await #expect(throws: PalbaseCoreError.self) {
+            try await tm.refreshSession()
+        }
+
+        // Local state was cleared.
+        let token = await tm.accessToken
+        #expect(token == nil)
+
+        // sessionCleared(.refreshFailed) event fired.
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let events = await received.events
+        #expect(events.contains(.sessionCleared(reason: .refreshFailed)))
+    }
+
+    @Test("refreshSession 5xx keeps session intact (transient)")
+    func refreshTransientKeepsSession() async throws {
+        let tm = TokenManager()
+        let s = Session(accessToken: "old", refreshToken: "rt", expiresAt: 0)
+        await tm.setSession(s)
+
+        await tm.setRefreshFunction { _ in
+            throw PalbaseCoreError.server(status: 503, message: "upstream down")
+        }
+
+        await #expect(throws: PalbaseCoreError.self) {
+            try await tm.refreshSession()
+        }
+
+        // Session NOT cleared — caller can retry later.
+        let token = await tm.refreshToken
+        #expect(token == "rt")
+    }
+
+    @Test("refreshSession 429 keeps session intact (transient)")
+    func refreshRateLimitedKeepsSession() async throws {
+        let tm = TokenManager()
+        let s = Session(accessToken: "old", refreshToken: "rt", expiresAt: 0)
+        await tm.setSession(s)
+
+        await tm.setRefreshFunction { _ in
+            throw PalbaseCoreError.http(status: 429, code: "rate_limited", message: "slow down")
+        }
+
+        await #expect(throws: PalbaseCoreError.self) {
+            try await tm.refreshSession()
+        }
+
+        let token = await tm.refreshToken
+        #expect(token == "rt")
+    }
+
+    @Test("refreshSession success rotates session and emits tokenRefreshed")
+    func refreshSuccessRotates() async throws {
+        let tm = TokenManager()
+        let old = Session(accessToken: "old", refreshToken: "rt0", expiresAt: 0)
+        await tm.setSession(old)
+
+        await tm.setRefreshFunction { rt in
+            #expect(rt == "rt0")
+            return Session(accessToken: "new", refreshToken: "rt1", expiresAt: Int64(Date().timeIntervalSince1970) + 3600)
+        }
+
+        let received = ReceivedEvents()
+        let unsubscribe = await tm.onAuthStateChange { event, _ in
+            Task { await received.append(event) }
+        }
+        defer { unsubscribe() }
+
+        let result = try await tm.refreshSession()
+        #expect(result.accessToken == "new")
+        #expect(result.refreshToken == "rt1")
+
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let events = await received.events
+        #expect(events.contains(.tokenRefreshed))
+        #expect(events.contains(.sessionSet))
+    }
+
     @Test("Listener receives sessionSet then is removed on unsubscribe")
     func listenerLifecycle() async throws {
         let tm = TokenManager()
