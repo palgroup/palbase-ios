@@ -103,25 +103,11 @@ public struct PalbaseAuth: Sendable {
         let session = dto.toSession()
         let user = dto.toUser()
         await tokens.setSession(session)
-        await wireRefreshInternal()
-
+        // Refresh function is wired once at `Palbase.configure` time
+        // (PalbaseCore/Palbase.swift). Re-wiring here on every signIn /
+        // signUp would shadow that with a duplicate closure pointing
+        // at a different path/body shape — exactly what produced the
+        // `/auth/refresh` 404 / silent-fail loop earlier this week.
         return AuthSuccess(user: user, session: session)
-    }
-
-    func wireRefreshInternal() async {
-        let httpRef = http
-        let fn: RefreshFunction = { refreshToken in
-            struct RefreshBody: Encodable, Sendable {
-                let refreshToken: String
-            }
-            let dto: AuthResultDTO = try await httpRef.request(
-                method: "POST",
-                path: "/auth/refresh",
-                body: RefreshBody(refreshToken: refreshToken),
-                headers: [:]
-            )
-            return dto.toSession()
-        }
-        await tokens.setRefreshFunction(fn)
     }
 }

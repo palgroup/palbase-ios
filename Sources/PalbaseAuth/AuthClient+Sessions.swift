@@ -4,13 +4,18 @@ extension PalbaseAuth {
     // MARK: - Token Refresh
 
     /// Force a token refresh now using the stored refresh token.
-    /// Normally you don't call this — `HttpClient` auto-refreshes on expiry.
+    /// Normally you don't call this — `HttpClient` auto-refreshes on expiry
+    /// and clears the session if refresh is fatal.
     @discardableResult
     public func refresh() async throws(AuthError) -> Session {
         guard let refreshToken = await tokens.refreshToken else {
             throw AuthError.noActiveSession()
         }
 
+        // Encoder applies convertToSnakeCase, so `refreshToken` →
+        // `refresh_token` on the wire. PalbaseCore wires the same
+        // shape into TokenManager.refreshFunction at boot — single
+        // source of truth for the refresh contract.
         struct Body: Encodable, Sendable { let refreshToken: String }
 
         let dto: TokenResponseDTO

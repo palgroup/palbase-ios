@@ -49,23 +49,24 @@ package actor HttpClient: HTTPRequesting {
         body: (any Encodable & Sendable)?,
         headers: [String: String]
     ) async throws(PalbaseCoreError) -> (data: Data, status: Int) {
-        // Auto-refresh expired token before request — but never on the
-        // refresh endpoint itself, otherwise refresh() → HttpClient
-        // pre-flight → refresh() recurses and deadlocks on
-        // TokenManager's single-flight Task awaiting its own value.
-        if !path.hasPrefix("/auth/token/refresh") {
-            // Block until boot finished so we observe the post-hydration
-            // refreshFunction + cachedSession, not the pre-hydration nil
-            // state that would silently skip the refresh below.
-            await tokens.waitUntilReady()
-            if await tokens.isExpired,
-               await tokens.refreshFunction != nil,
-               await tokens.refreshToken != nil {
-                _ = try? await tokens.refreshSession()
-            }
-        }
+        await preflightRefresh(path: path)
 
-        return try await executeWithRetry(method: method, path: path, body: body, extraHeaders: headers, attempt: 0)
+        do {
+            return try await executeWithRetry(method: method, path: path, body: body, extraHeaders: headers, attempt: 0)
+        } catch let err as PalbaseCoreError {
+            // Reactive refresh: if the server rejected our access token
+            // mid-call, try once to renew and replay. If renewal itself
+            // is fatal, TokenManager has already cleared and the host
+            // app will see sessionCleared(.refreshFailed); we surface
+            // the original 401 so the caller's error path is consistent.
+            if await shouldAttemptReactiveRefresh(err: err, path: path) {
+                let renewed = (try? await tokens.refreshSession()) != nil
+                if renewed {
+                    return try await executeWithRetry(method: method, path: path, body: body, extraHeaders: headers, attempt: 0)
+                }
+            }
+            throw err
+        }
     }
 
     package func requestRawBody(
@@ -74,10 +75,7 @@ package actor HttpClient: HTTPRequesting {
         body: Data?,
         headers: [String: String]
     ) async throws(PalbaseCoreError) -> (data: Data, status: Int, headers: [String: String]) {
-        await tokens.waitUntilReady()
-        if await tokens.isExpired, await tokens.refreshFunction != nil, await tokens.refreshToken != nil {
-            _ = try? await tokens.refreshSession()
-        }
+        await preflightRefresh(path: path)
 
         let url: URL
         do {
@@ -91,7 +89,7 @@ package actor HttpClient: HTTPRequesting {
         request.timeoutInterval = config.requestTimeout
         if let body { request.httpBody = body }
 
-        var merged = await buildHeaders(extra: headers)
+        var merged = await buildHeaders(extra: headers, path: path)
         // Caller-provided Content-Type wins; strip the default JSON one unless caller set it.
         if headers["Content-Type"] == nil && headers["content-type"] == nil {
             merged.removeValue(forKey: "Content-Type")
@@ -160,23 +158,81 @@ package actor HttpClient: HTTPRequesting {
         return url
     }
 
-    private func buildHeaders(extra: [String: String]) async -> [String: String] {
+    private func buildHeaders(extra: [String: String], path: String) async -> [String: String] {
         var headers: [String: String] = [
             "apikey": config.apiKey,
             "Content-Type": "application/json"
         ]
 
-        if let token = await tokens.accessToken {
+        // Unauthenticated endpoints must never carry a stale Bearer.
+        // The login form, signup, password reset and refresh itself
+        // are all entry points the user can hit when the cached
+        // access_token is already revoked — attaching it would let a
+        // dead token poison a fresh credential exchange.
+        let attachAuth = !Self.isUnauthenticatedPath(path)
+
+        if attachAuth, let token = await tokens.accessToken {
             headers["Authorization"] = "Bearer \(token)"
         }
 
-        if let serviceRole = config.serviceRoleKey {
+        if attachAuth, let serviceRole = config.serviceRoleKey {
             headers["Authorization"] = "Bearer \(serviceRole)"
         }
 
         for (k, v) in config.headers { headers[k] = v }
         for (k, v) in extra { headers[k] = v }
         return headers
+    }
+
+    /// Paths that establish or rotate credentials. They never carry an
+    /// `Authorization: Bearer <stale>` header from the cached session.
+    nonisolated static func isUnauthenticatedPath(_ path: String) -> Bool {
+        let unauthed: [String] = [
+            "/auth/login",
+            "/auth/signup",
+            "/auth/token/refresh",
+            "/auth/password/reset",
+            "/auth/password/reset/confirm",
+            "/auth/magic-link",
+            "/auth/magic-link/verify",
+            "/auth/verify-email",
+            "/auth/resend-verification",
+            "/auth/oauth/credential",
+        ]
+        for prefix in unauthed where path.hasPrefix(prefix) {
+            return true
+        }
+        return false
+    }
+
+    /// Block until boot finished, then opportunistically renew an
+    /// already-expired access token before the request goes out. The
+    /// refresh endpoint itself is excluded — it would recurse, and so
+    /// is anything in the unauthenticated allowlist (no point renewing
+    /// for a request that won't carry a Bearer anyway).
+    private func preflightRefresh(path: String) async {
+        guard !Self.isUnauthenticatedPath(path) else { return }
+        await tokens.waitUntilReady()
+        guard await tokens.isExpired,
+              await tokens.refreshFunction != nil,
+              await tokens.refreshToken != nil
+        else { return }
+        // TokenManager classifies the failure: 4xx clears the keychain
+        // and emits sessionCleared(.refreshFailed); transient errors
+        // leave the session and we just send the (still expired) token
+        // and let the server respond — the post-401 path retries once.
+        _ = try? await tokens.refreshSession()
+    }
+
+    /// Decide whether a thrown `PalbaseCoreError` from `executeWithRetry`
+    /// is worth one reactive refresh attempt. Only 401 on a path that
+    /// would actually carry a Bearer qualifies.
+    private func shouldAttemptReactiveRefresh(err: PalbaseCoreError, path: String) async -> Bool {
+        guard !Self.isUnauthenticatedPath(path) else { return false }
+        guard case .http(let status, _, _, _) = err, status == 401 else { return false }
+        let hasFn = await tokens.refreshFunction != nil
+        let hasRt = await tokens.refreshToken != nil
+        return hasFn && hasRt
     }
 
     private func executeWithRetry(
@@ -191,7 +247,7 @@ package actor HttpClient: HTTPRequesting {
         request.httpMethod = method
         request.timeoutInterval = config.requestTimeout
 
-        let headers = await buildHeaders(extra: extraHeaders)
+        let headers = await buildHeaders(extra: extraHeaders, path: path)
         for (k, v) in headers { request.setValue(v, forHTTPHeaderField: k) }
 
         if let body = body {

@@ -59,7 +59,6 @@ extension PalbaseAuth {
 
         let session = dto.toSession()
         await tokens.setSession(session)
-        await wireRefreshInternal()
         return session
     }
 
@@ -80,7 +79,6 @@ extension PalbaseAuth {
 
         let session = dto.toSession()
         await tokens.setSession(session)
-        await wireRefreshInternal()
         return session
     }
 
@@ -134,7 +132,6 @@ extension PalbaseAuth {
 
         let session = dto.toSession()
         await tokens.setSession(session)
-        await wireRefreshInternal()
         return session
     }
 

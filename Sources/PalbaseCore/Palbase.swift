@@ -36,15 +36,10 @@ public enum Palbase {
 
     /// Configure with full options (custom URL, URLSession, timeouts, etc.).
     ///
-    /// Calling this more than once with the same apikey is a no-op. The
-    /// idempotency guard exists because `@main` App `init()` can fire
-    /// twice in dev (Xcode previews, debugger reattach, scene
-    /// restoration), and a second TokenManager would race the first
-    /// for the same keychain refresh_token — palauth's rotation
-    /// detector then revokes the family ("refresh token reuse
-    /// detected") and the user gets logged out.
-    ///
-    /// Calling with a *different* apikey overwrites — that's an
+    /// Calling this twice with the same apikey is a no-op so SwiftUI
+    /// `@main` App `init()` firing more than once (Previews, debugger
+    /// reattach, scene restoration) doesn't spin up a second
+    /// TokenManager. A different apikey overwrites — that's an
     /// explicit reconfiguration the caller asked for.
     public static func configure(_ config: PalbaseConfig) {
         if let existing = state.config, existing.apiKey == config.apiKey {
@@ -100,33 +95,28 @@ public enum Palbase {
     /// HttpClient's pre-flight refresh skips the `/auth/token/refresh`
     /// path itself to avoid the call recursing into itself.
     private static func wireRefreshFunction(http: HTTPRequesting, tokens: TokenManager) async {
-        // Wire body matches palauth's refreshTokenRequest:
-        // - path: /auth/token/refresh (NOT /auth/refresh — that route
-        //   doesn't exist; an earlier draft of this file targeted it,
-        //   so refresh silently 404'd and HttpClient's `try?` ate the
-        //   error → expired access token kept getting sent → 401).
-        // - body field: snake_case refresh_token.
-        // - response field: snake_case refresh_token / access_token /
-        //   expires_in.
+        // Path: /auth/token/refresh (the wire contract palauth
+        // implements). Encoder/decoder handle camelCase ↔ snake_case
+        // automatically via JSON.palbaseDefault, so DTOs stay readable.
         struct RefreshBody: Encodable, Sendable {
-            let refresh_token: String
+            let refreshToken: String
         }
         struct RefreshResponse: Decodable, Sendable {
-            let access_token: String
-            let refresh_token: String
-            let expires_in: Int
+            let accessToken: String
+            let refreshToken: String
+            let expiresIn: Int
         }
         let fn: RefreshFunction = { refreshToken in
             let dto: RefreshResponse = try await http.request(
                 method: "POST",
                 path: "/auth/token/refresh",
-                body: RefreshBody(refresh_token: refreshToken),
+                body: RefreshBody(refreshToken: refreshToken),
                 headers: [:]
             )
-            let expiresAt = Int64(Date().timeIntervalSince1970) + Int64(dto.expires_in)
+            let expiresAt = Int64(Date().timeIntervalSince1970) + Int64(dto.expiresIn)
             return Session(
-                accessToken: dto.access_token,
-                refreshToken: dto.refresh_token,
+                accessToken: dto.accessToken,
+                refreshToken: dto.refreshToken,
                 expiresAt: expiresAt
             )
         }

@@ -42,7 +42,6 @@ extension PalbaseAuth {
         let session = dto.toSession()
         let user = dto.toUser()
         await tokens.setSession(session)
-        await wireRefreshInternal()
 
         return AuthSuccess(user: user, session: session)
     }
