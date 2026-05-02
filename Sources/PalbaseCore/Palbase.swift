@@ -35,7 +35,21 @@ public enum Palbase {
     }
 
     /// Configure with full options (custom URL, URLSession, timeouts, etc.).
+    ///
+    /// Calling this more than once with the same apikey is a no-op. The
+    /// idempotency guard exists because `@main` App `init()` can fire
+    /// twice in dev (Xcode previews, debugger reattach, scene
+    /// restoration), and a second TokenManager would race the first
+    /// for the same keychain refresh_token — palauth's rotation
+    /// detector then revokes the family ("refresh token reuse
+    /// detected") and the user gets logged out.
+    ///
+    /// Calling with a *different* apikey overwrites — that's an
+    /// explicit reconfiguration the caller asked for.
     public static func configure(_ config: PalbaseConfig) {
+        if let existing = state.config, existing.apiKey == config.apiKey {
+            return
+        }
         let storage = KeychainTokenStorage()
         let tokens = TokenManager(storage: storage)
         let http = HttpClient(config: config, tokens: tokens)
