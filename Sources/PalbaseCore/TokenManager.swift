@@ -10,6 +10,15 @@ package actor TokenManager {
 
     package var refreshFunction: RefreshFunction?
 
+    // Boot is async (loadFromStorage + wireRefreshFunction run in a
+    // detached Task spawned from configure()). Anything that needs
+    // refresh-on-401 to actually fire must await this signal first;
+    // otherwise the first request after configure() can race past the
+    // hydration and find refreshFunction == nil → pre-flight skipped →
+    // expired token sent → 401 with no recovery.
+    private var bootContinuations: [CheckedContinuation<Void, Never>] = []
+    private var isBootComplete = false
+
     package init(storage: TokenStorage = InMemoryTokenStorage()) {
         self.storage = storage
     }
@@ -17,6 +26,27 @@ package actor TokenManager {
     /// Hydrate from persistent storage. Call once at SDK startup.
     package func loadFromStorage() async {
         cachedSession = await storage.load()
+    }
+
+    /// Mark boot complete (storage hydrated + refresh function wired).
+    /// Wakes everyone waiting in `waitUntilReady()`.
+    package func markBootComplete() {
+        guard !isBootComplete else { return }
+        isBootComplete = true
+        let pending = bootContinuations
+        bootContinuations.removeAll()
+        for cont in pending { cont.resume() }
+    }
+
+    /// Suspend until `markBootComplete` has been called. No-op if boot
+    /// already finished. Used by HttpClient's pre-flight refresh check
+    /// so the first request after `Palbase.configure()` blocks ~ms for
+    /// keychain hydration instead of racing past with a stale token.
+    package func waitUntilReady() async {
+        if isBootComplete { return }
+        await withCheckedContinuation { cont in
+            bootContinuations.append(cont)
+        }
     }
 
     package var accessToken: String? { cachedSession?.accessToken }

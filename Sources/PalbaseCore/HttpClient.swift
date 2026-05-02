@@ -53,11 +53,16 @@ package actor HttpClient: HTTPRequesting {
         // refresh endpoint itself, otherwise refresh() → HttpClient
         // pre-flight → refresh() recurses and deadlocks on
         // TokenManager's single-flight Task awaiting its own value.
-        if !path.hasPrefix("/auth/refresh"),
-           await tokens.isExpired,
-           await tokens.refreshFunction != nil,
-           await tokens.refreshToken != nil {
-            _ = try? await tokens.refreshSession()
+        if !path.hasPrefix("/auth/refresh") {
+            // Block until boot finished so we observe the post-hydration
+            // refreshFunction + cachedSession, not the pre-hydration nil
+            // state that would silently skip the refresh below.
+            await tokens.waitUntilReady()
+            if await tokens.isExpired,
+               await tokens.refreshFunction != nil,
+               await tokens.refreshToken != nil {
+                _ = try? await tokens.refreshSession()
+            }
         }
 
         return try await executeWithRetry(method: method, path: path, body: body, extraHeaders: headers, attempt: 0)
@@ -69,6 +74,7 @@ package actor HttpClient: HTTPRequesting {
         body: Data?,
         headers: [String: String]
     ) async throws(PalbaseCoreError) -> (data: Data, status: Int, headers: [String: String]) {
+        await tokens.waitUntilReady()
         if await tokens.isExpired, await tokens.refreshFunction != nil, await tokens.refreshToken != nil {
             _ = try? await tokens.refreshSession()
         }

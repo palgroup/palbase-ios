@@ -58,6 +58,25 @@ struct TokenManagerTests {
         #expect(cleared == nil)
     }
 
+    @Test("waitUntilReady suspends until markBootComplete and is no-op after")
+    func bootSignal() async throws {
+        let tm = TokenManager()
+
+        // Two waiters parked before boot completes; both must resume.
+        async let w1: Void = tm.waitUntilReady()
+        async let w2: Void = tm.waitUntilReady()
+        try await Task.sleep(nanoseconds: 20_000_000)
+        await tm.markBootComplete()
+        _ = await (w1, w2)
+
+        // After boot, waitUntilReady returns immediately (no continuation
+        // bookkeeping to leak).
+        let start = ContinuousClock().now
+        await tm.waitUntilReady()
+        let elapsed = ContinuousClock().now - start
+        #expect(elapsed < .milliseconds(5))
+    }
+
     @Test("Listener receives sessionSet then is removed on unsubscribe")
     func listenerLifecycle() async throws {
         let tm = TokenManager()

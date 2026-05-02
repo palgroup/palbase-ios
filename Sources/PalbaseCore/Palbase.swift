@@ -74,6 +74,9 @@ public enum Palbase {
         Task {
             await tokens.loadFromStorage()
             await wireRefreshFunction(http: http, tokens: tokens)
+            // Unblock anything waiting on `waitUntilReady` — see
+            // TokenManager.markBootComplete for the boot-race rationale.
+            await tokens.markBootComplete()
         }
     }
 
