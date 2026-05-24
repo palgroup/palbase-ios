@@ -128,6 +128,18 @@ public enum Palbase {
     package static var backendHttp: HTTPRequesting? { state.backendHttp }
     package static var tokens: TokenManager? { state.tokens }
 
+    /// App Attest provider, installed by the `PalBackend` façade when a
+    /// project enforces attestation. `nil` means enforcement is off and
+    /// no attestation headers are attached. See `AppAttesting`.
+    package static var attestor: AppAttesting? { state.attestor }
+
+    /// Install (or clear) the App Attest provider. Called by the façade
+    /// layer after `configure`, once it knows whether the project
+    /// enforces attestation.
+    package static func setAttestor(_ attestor: AppAttesting?) {
+        state.setAttestor(attestor)
+    }
+
     /// API key supplied to `configure(apiKey:)`. `nil` until configured.
     public static var apiKey: String? { state.config?.apiKey }
 
@@ -158,10 +170,21 @@ final class State: @unchecked Sendable {
     private var _tokens: TokenManager?
     private var _http: HTTPRequesting?
     private var _backendHttp: HTTPRequesting?
+    private var _attestor: AppAttesting?
 
     var config: PalbaseConfig? {
         lock.lock(); defer { lock.unlock() }
         return _config
+    }
+
+    var attestor: AppAttesting? {
+        lock.lock(); defer { lock.unlock() }
+        return _attestor
+    }
+
+    func setAttestor(_ attestor: AppAttesting?) {
+        lock.lock(); defer { lock.unlock() }
+        _attestor = attestor
     }
 
     var tokens: TokenManager? {

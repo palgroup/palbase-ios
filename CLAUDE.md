@@ -74,11 +74,28 @@ Only these symbols are allowed to be `public`:
 - Module-specific `enum {Module}Error: PalbaseError`
 - Domain types: `User`, `AuthSuccess`, `MFAFactor`, etc. (read-only — init is `package`)
 
+**PalbaseBackend:**
+- `struct PalbaseBackend` + `static var shared` + `call`/`upload`/`openAPISpec`
+- `enum BackendError: PalbaseError`
+- `struct FieldError`, `struct BackendUploadProgress`, `struct UploadConstraints` (read-only)
+
+**PalBackend (façade product):**
+- `enum PalBackend` — `configure(apiKey:…)` overloads + `endpointRef` ONLY
+- `struct PalBackendClient` + `backend`/`auth` accessors; `let pb`
+- Re-exports `PalbaseBackend` + `PalbaseAuth` surfaces; does NOT expose `PalbaseDB`
+
+**PalbaseAppAttest (internal target — only used via the façade):**
+- `actor AppAttestProvider: AppAttesting` + `public init(http:)` (façade wires it)
+- `enum AppAttestError`
+- Everything else (`DeviceAttestProvider`, `AttestKeyStore`, providers/stores) is `package`
+
 **Forbidden public:**
 - `HttpClient`, `TokenManager`, `HTTPRequesting`, `RequestInterceptor`
 - `TokenStorage`, `KeychainTokenStorage`, `InMemoryTokenStorage`
 - `JSONDecoder/Encoder.palbaseDefault`, `EmptyResponse`, `PalbaseErrorEnvelope`
 - `RefreshFunction`, `Palbase.http`, `Palbase.tokens`, `Palbase.requireHTTP/Tokens`
+- `AppAttesting`, `Palbase.attestor`, `Palbase.setAttestor` — keep `package`
+- `requestRawBodyResult`, `uploadRawBodyResult` (transport seam) — keep `package`
 - DTO structs (`AuthResultDTO`, `UserInfoDTO`, etc.) — keep `internal`
 - Module client `init(http:tokens:)` — keep `package`
 - Domain type `init` — keep `package` (users only read, never construct)

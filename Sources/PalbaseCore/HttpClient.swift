@@ -59,7 +59,8 @@ package actor HttpClient: HTTPRequesting {
             // is fatal, TokenManager has already cleared and the host
             // app will see sessionCleared(.refreshFailed); we surface
             // the original 401 so the caller's error path is consistent.
-            if await shouldAttemptReactiveRefresh(err: err, path: path) {
+            let status: Int? = { if case .http(let s, _, _, _) = err { return s }; return nil }()
+            if let status, await shouldAttemptReactiveRefresh(status: status, path: path) {
                 let renewed = (try? await tokens.refreshSession()) != nil
                 if renewed {
                     return try await executeWithRetry(method: method, path: path, body: body, extraHeaders: headers, attempt: 0)
@@ -67,6 +68,89 @@ package actor HttpClient: HTTPRequesting {
             }
             throw err
         }
+    }
+
+    package func requestRawBodyResult(
+        method: String,
+        path: String,
+        body: Data?,
+        headers: [String: String]
+    ) async throws(PalbaseCoreError) -> (data: Data, status: Int, headers: [String: String]) {
+        await preflightRefresh(path: path)
+
+        var result = try await executeResult(method: method, path: path, body: body, extraHeaders: headers, attempt: 0)
+
+        // Reactive refresh: a 401 on a Bearer-carrying path gets one
+        // renew-and-replay attempt, mirroring requestRaw's behavior — but
+        // here the 401 is a returned response, not a thrown error.
+        if result.status == 401, await shouldAttemptReactiveRefresh(status: 401, path: path) {
+            let renewed = (try? await tokens.refreshSession()) != nil
+            if renewed {
+                result = try await executeResult(method: method, path: path, body: body, extraHeaders: headers, attempt: 0)
+            }
+        }
+        return (result.data, result.status, result.headers)
+    }
+
+    package func uploadRawBodyResult(
+        method: String,
+        path: String,
+        body: Data,
+        headers: [String: String],
+        onProgress: (@Sendable (_ sent: Int64, _ total: Int64) -> Void)?
+    ) async throws(PalbaseCoreError) -> (data: Data, status: Int, headers: [String: String]) {
+        await preflightRefresh(path: path)
+
+        let url: URL
+        do {
+            url = try getBaseURL().appendingPathComponent(path)
+        } catch {
+            throw error
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.timeoutInterval = config.requestTimeout
+
+        var merged = await buildHeaders(extra: headers, path: path)
+        // Caller sets multipart Content-Type via headers; never override it.
+        if headers["Content-Type"] == nil && headers["content-type"] == nil {
+            merged.removeValue(forKey: "Content-Type")
+        }
+        for (k, v) in merged { request.setValue(v, forHTTPHeaderField: k) }
+
+        for interceptor in interceptors {
+            do {
+                try await interceptor.intercept(&request)
+            } catch let err as PalbaseCoreError {
+                throw err
+            } catch {
+                throw PalbaseCoreError.network(message: "Interceptor failed: \(error.localizedDescription)")
+            }
+        }
+
+        let delegate = onProgress.map { UploadProgressDelegate(onProgress: $0) }
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await config.urlSession.upload(for: request, from: body, delegate: delegate)
+        } catch {
+            if Task.isCancelled || Self.isCancellation(error) {
+                throw PalbaseCoreError.network(message: "Upload cancelled.")
+            }
+            throw PalbaseCoreError.network(message: error.localizedDescription)
+        }
+
+        guard let http = response as? HTTPURLResponse else {
+            throw PalbaseCoreError.network(message: "Invalid response (not HTTP).")
+        }
+
+        var respHeaders: [String: String] = [:]
+        for (k, v) in http.allHeaderFields {
+            if let ks = k as? String, let vs = v as? String { respHeaders[ks] = vs }
+        }
+        return (data, http.statusCode, respHeaders)
     }
 
     package func requestRawBody(
@@ -224,12 +308,13 @@ package actor HttpClient: HTTPRequesting {
         _ = try? await tokens.refreshSession()
     }
 
-    /// Decide whether a thrown `PalbaseCoreError` from `executeWithRetry`
-    /// is worth one reactive refresh attempt. Only 401 on a path that
-    /// would actually carry a Bearer qualifies.
-    private func shouldAttemptReactiveRefresh(err: PalbaseCoreError, path: String) async -> Bool {
+    /// Decide whether a 401 on `path` is worth one reactive refresh
+    /// attempt. Only a Bearer-carrying path with a usable refresh token
+    /// qualifies. Shared by the throwing (`requestRaw`) and non-throwing
+    /// (`requestRawResult`) paths.
+    private func shouldAttemptReactiveRefresh(status: Int, path: String) async -> Bool {
+        guard status == 401 else { return false }
         guard !Self.isUnauthenticatedPath(path) else { return false }
-        guard case .http(let status, _, _, _) = err, status == 401 else { return false }
         let hasFn = await tokens.refreshFunction != nil
         let hasRt = await tokens.refreshToken != nil
         return hasFn && hasRt
@@ -273,6 +358,13 @@ package actor HttpClient: HTTPRequesting {
         do {
             (data, response) = try await config.urlSession.data(for: request)
         } catch {
+            // A cancelled Task must surface immediately — never retried,
+            // never re-mapped to a network error. URLSession reports this
+            // as URLError.cancelled; Swift Concurrency may also throw
+            // CancellationError directly.
+            if Task.isCancelled || Self.isCancellation(error) {
+                throw PalbaseCoreError.network(message: "Request cancelled.")
+            }
             if attempt < config.maxRetries - 1 {
                 let backoff = config.initialBackoffMs * UInt64(pow(2.0, Double(attempt)))
                 try? await Task.sleep(nanoseconds: backoff * 1_000_000)
@@ -301,6 +393,85 @@ package actor HttpClient: HTTPRequesting {
         return (data, http.statusCode)
     }
 
+    /// Non-throwing sibling of `executeWithRetry`: runs the same transport
+    /// retry + 429 backoff, but a terminal non-2xx is **returned** (body,
+    /// status, headers, parsed `Retry-After`) instead of being mapped to a
+    /// `PalbaseCoreError`. Genuine transport failures and cancellation
+    /// still throw — there is no HTTP response to hand back.
+    private func executeResult(
+        method: String,
+        path: String,
+        body: Data?,
+        extraHeaders: [String: String],
+        attempt: Int
+    ) async throws(PalbaseCoreError) -> (data: Data, status: Int, headers: [String: String], retryAfter: Int?) {
+        let url = try getBaseURL().appendingPathComponent(path)
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.timeoutInterval = config.requestTimeout
+        if let body { request.httpBody = body }
+
+        var merged = await buildHeaders(extra: extraHeaders, path: path)
+        // Caller-provided Content-Type wins; strip the default JSON one
+        // unless the caller set it (matches requestRawBody behavior).
+        if extraHeaders["Content-Type"] == nil && extraHeaders["content-type"] == nil {
+            merged.removeValue(forKey: "Content-Type")
+        }
+        for (k, v) in merged { request.setValue(v, forHTTPHeaderField: k) }
+
+        for interceptor in interceptors {
+            do {
+                try await interceptor.intercept(&request)
+            } catch let err as PalbaseCoreError {
+                throw err
+            } catch {
+                throw PalbaseCoreError.network(message: "Interceptor failed: \(error.localizedDescription)")
+            }
+        }
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await config.urlSession.data(for: request)
+        } catch {
+            if Task.isCancelled || Self.isCancellation(error) {
+                throw PalbaseCoreError.network(message: "Request cancelled.")
+            }
+            if attempt < config.maxRetries - 1 {
+                let backoff = config.initialBackoffMs * UInt64(pow(2.0, Double(attempt)))
+                try? await Task.sleep(nanoseconds: backoff * 1_000_000)
+                return try await executeResult(method: method, path: path, body: body, extraHeaders: extraHeaders, attempt: attempt + 1)
+            }
+            throw PalbaseCoreError.network(message: error.localizedDescription)
+        }
+
+        guard let http = response as? HTTPURLResponse else {
+            throw PalbaseCoreError.network(message: "Invalid response (not HTTP).")
+        }
+
+        let retryAfter = http.value(forHTTPHeaderField: "Retry-After").flatMap { Int($0) }
+
+        // 429 backoff/retry (same policy as the throwing path).
+        if http.statusCode == 429, attempt < config.maxRetries - 1 {
+            let delayMs = retryAfter.map { UInt64($0 * 1000) } ?? (config.initialBackoffMs * UInt64(pow(2.0, Double(attempt))))
+            try? await Task.sleep(nanoseconds: delayMs * 1_000_000)
+            return try await executeResult(method: method, path: path, body: body, extraHeaders: extraHeaders, attempt: attempt + 1)
+        }
+
+        var respHeaders: [String: String] = [:]
+        for (k, v) in http.allHeaderFields {
+            if let ks = k as? String, let vs = v as? String { respHeaders[ks] = vs }
+        }
+        return (data, http.statusCode, respHeaders, retryAfter)
+    }
+
+    /// True when an error thrown by `URLSession` represents cancellation.
+    nonisolated static func isCancellation(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        if let urlError = error as? URLError, urlError.code == .cancelled { return true }
+        return false
+    }
+
     private func mapHTTPError(status: Int, data: Data) -> PalbaseCoreError {
         let envelope = try? JSONDecoder.palbaseDefault.decode(PalbaseErrorEnvelope.self, from: data)
         let code = envelope?.code ?? "unknown_error"
@@ -319,4 +490,27 @@ package actor HttpClient: HTTPRequesting {
 
 package struct EmptyResponse: Decodable, Sendable {
     package init() {}
+}
+
+// MARK: - Upload progress delegate
+
+/// Per-task delegate that forwards `URLSession` send-progress to a
+/// caller-supplied closure. URLSession invokes delegate callbacks on its
+/// own delegate queue, so the closure must be `@Sendable`.
+final class UploadProgressDelegate: NSObject, URLSessionTaskDelegate, Sendable {
+    private let onProgress: @Sendable (_ sent: Int64, _ total: Int64) -> Void
+
+    init(onProgress: @escaping @Sendable (_ sent: Int64, _ total: Int64) -> Void) {
+        self.onProgress = onProgress
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didSendBodyData bytesSent: Int64,
+        totalBytesSent: Int64,
+        totalBytesExpectedToSend: Int64
+    ) {
+        onProgress(totalBytesSent, totalBytesExpectedToSend)
+    }
 }

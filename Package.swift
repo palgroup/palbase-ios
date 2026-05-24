@@ -25,21 +25,41 @@ let package = Package(
         .library(name: "PalbaseLinks", targets: ["PalbaseLinks"]),
         .library(name: "PalbaseCms", targets: ["PalbaseCms"]),
         .library(name: "PalbaseBackend", targets: ["PalbaseBackend"]),
+
+        // The `palbackend` product: a single curated façade for apps with
+        // a managed backend. `import PalBackend` surfaces only the backend
+        // RPC + auth; Core/AppAttest/transport stay internal. Deliberately
+        // does NOT expose PalbaseDB — a backend app goes through its
+        // backend, not direct-to-DB. See
+        // docs/superpowers/specs/2026-05-24-palbackend-ios-sdk-design.md.
+        .library(name: "PalBackend", targets: ["PalBackend"]),
     ],
     targets: [
-        .target(name: "PalbaseCore"),
-        .target(name: "PalbaseAuth", dependencies: ["PalbaseCore"]),
-        .target(name: "PalbaseDB", dependencies: ["PalbaseCore"]),
-        .target(name: "PalbaseDocs", dependencies: ["PalbaseCore"]),
-        .target(name: "PalbaseStorage", dependencies: ["PalbaseCore"]),
-        .target(name: "PalbaseRealtime", dependencies: ["PalbaseCore"]),
-        .target(name: "PalbaseFunctions", dependencies: ["PalbaseCore"]),
-        .target(name: "PalbaseFlags", dependencies: ["PalbaseCore", "PalbaseRealtime"]),
-        .target(name: "PalbaseNotifications", dependencies: ["PalbaseCore"]),
-        .target(name: "PalbaseAnalytics", dependencies: ["PalbaseCore"]),
-        .target(name: "PalbaseLinks", dependencies: ["PalbaseCore"]),
-        .target(name: "PalbaseCms", dependencies: ["PalbaseCore"]),
-        .target(name: "PalbaseBackend", dependencies: ["PalbaseCore"]),
+        .target(name: "PalbaseCore", exclude: ["README.md"]),
+        .target(name: "PalbaseAuth", dependencies: ["PalbaseCore"], exclude: ["README.md"]),
+        .target(name: "PalbaseDB", dependencies: ["PalbaseCore"], exclude: ["README.md"]),
+        .target(name: "PalbaseDocs", dependencies: ["PalbaseCore"], exclude: ["README.md"]),
+        .target(name: "PalbaseStorage", dependencies: ["PalbaseCore"], exclude: ["README.md"]),
+        .target(name: "PalbaseRealtime", dependencies: ["PalbaseCore"], exclude: ["README.md"]),
+        .target(name: "PalbaseFunctions", dependencies: ["PalbaseCore"], exclude: ["README.md"]),
+        .target(name: "PalbaseFlags", dependencies: ["PalbaseCore", "PalbaseRealtime"], exclude: ["README.md"]),
+        .target(name: "PalbaseNotifications", dependencies: ["PalbaseCore"], exclude: ["README.md"]),
+        .target(name: "PalbaseAnalytics", dependencies: ["PalbaseCore"], exclude: ["README.md"]),
+        .target(name: "PalbaseLinks", dependencies: ["PalbaseCore"], exclude: ["README.md"]),
+        .target(name: "PalbaseCms", dependencies: ["PalbaseCore"], exclude: ["README.md"]),
+        .target(name: "PalbaseBackend", dependencies: ["PalbaseCore"], exclude: ["README.md"]),
+
+        // App Attest provider — internal target, conforms to Core's
+        // `AppAttesting`. Linked by the PalBackend façade; never a product
+        // on its own (the developer never imports it directly).
+        .target(name: "PalbaseAppAttest", dependencies: ["PalbaseCore"]),
+
+        // PalBackend façade target — re-exports the curated surface.
+        .target(
+            name: "PalBackend",
+            dependencies: ["PalbaseBackend", "PalbaseAuth", "PalbaseAppAttest"],
+            exclude: ["README.md"]
+        ),
 
         .testTarget(name: "PalbaseCoreTests", dependencies: ["PalbaseCore"]),
         .testTarget(name: "PalbaseDBTests", dependencies: ["PalbaseDB"]),
@@ -49,6 +69,8 @@ let package = Package(
         .testTarget(name: "PalbaseAnalyticsTests", dependencies: ["PalbaseAnalytics"]),
         .testTarget(name: "PalbaseFlagsTests", dependencies: ["PalbaseFlags"]),
         .testTarget(name: "PalbaseBackendTests", dependencies: ["PalbaseBackend"]),
+        .testTarget(name: "PalbaseAppAttestTests", dependencies: ["PalbaseAppAttest"]),
+        .testTarget(name: "PalBackendTests", dependencies: ["PalBackend"]),
 
         // Live integration probe — Phase 8.
         //

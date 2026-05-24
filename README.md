@@ -70,6 +70,8 @@ let result = try await PalbaseAuth.shared.signIn(
 | [`PalbaseAnalytics`](Sources/PalbaseAnalytics/README.md) | ✅ | Event tracking: capture, identify, alias, screen/page, offline queue, auto-flush |
 | [`PalbaseLinks`](Sources/PalbaseLinks/README.md) | 🚧 | Deep linking |
 | [`PalbaseCms`](Sources/PalbaseCms/README.md) | 🚧 | Content management |
+| [`PalbaseBackend`](Sources/PalbaseBackend/README.md) | ✅ | Managed backend: typed RPC (`call`), multipart upload, typed/named errors, idempotency |
+| [`PalBackend`](Sources/PalBackend/README.md) | ✅ | **palbackend product** — single-import façade (`pb.backend` + `pb.auth`), App Attest |
 
 ## Concepts
 
