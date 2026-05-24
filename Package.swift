@@ -24,15 +24,14 @@ let package = Package(
         .library(name: "PalbaseAnalytics", targets: ["PalbaseAnalytics"]),
         .library(name: "PalbaseLinks", targets: ["PalbaseLinks"]),
         .library(name: "PalbaseCms", targets: ["PalbaseCms"]),
-        .library(name: "PalbaseBackend", targets: ["PalbaseBackend"]),
-
-        // The `palbackend` product: a single curated façade for apps with
-        // a managed backend. `import PalBackend` surfaces only the backend
-        // RPC + auth; Core/AppAttest/transport stay internal. Deliberately
-        // does NOT expose PalbaseDB — a backend app goes through its
-        // backend, not direct-to-DB. See
-        // docs/superpowers/specs/2026-05-24-palbackend-ios-sdk-design.md.
-        .library(name: "PalBackend", targets: ["PalBackend"]),
+        // App Attest: opt-in device/app-integrity enforcement. Import and
+        // call `Palbase.enableAppAttest()` once after configure; every
+        // request then carries an assertion.
+        .library(name: "PalbaseAppAttest", targets: ["PalbaseAppAttest"]),
+        // NOTE: the managed-backend SDK now lives in its own repo,
+        // `palbackend-ios` (palgroup/palbackend-ios). palbase-ios is the
+        // small-project surface only (auth + db + storage + realtime + …);
+        // it intentionally ships no backend module.
     ],
     targets: [
         .target(name: "PalbaseCore", exclude: ["README.md"]),
@@ -47,19 +46,7 @@ let package = Package(
         .target(name: "PalbaseAnalytics", dependencies: ["PalbaseCore"], exclude: ["README.md"]),
         .target(name: "PalbaseLinks", dependencies: ["PalbaseCore"], exclude: ["README.md"]),
         .target(name: "PalbaseCms", dependencies: ["PalbaseCore"], exclude: ["README.md"]),
-        .target(name: "PalbaseBackend", dependencies: ["PalbaseCore"], exclude: ["README.md"]),
-
-        // App Attest provider — internal target, conforms to Core's
-        // `AppAttesting`. Linked by the PalBackend façade; never a product
-        // on its own (the developer never imports it directly).
         .target(name: "PalbaseAppAttest", dependencies: ["PalbaseCore"]),
-
-        // PalBackend façade target — re-exports the curated surface.
-        .target(
-            name: "PalBackend",
-            dependencies: ["PalbaseBackend", "PalbaseAuth", "PalbaseAppAttest"],
-            exclude: ["README.md"]
-        ),
 
         .testTarget(name: "PalbaseCoreTests", dependencies: ["PalbaseCore"]),
         .testTarget(name: "PalbaseDBTests", dependencies: ["PalbaseDB"]),
@@ -68,9 +55,7 @@ let package = Package(
         .testTarget(name: "PalbaseRealtimeTests", dependencies: ["PalbaseRealtime"]),
         .testTarget(name: "PalbaseAnalyticsTests", dependencies: ["PalbaseAnalytics"]),
         .testTarget(name: "PalbaseFlagsTests", dependencies: ["PalbaseFlags"]),
-        .testTarget(name: "PalbaseBackendTests", dependencies: ["PalbaseBackend"]),
         .testTarget(name: "PalbaseAppAttestTests", dependencies: ["PalbaseAppAttest"]),
-        .testTarget(name: "PalBackendTests", dependencies: ["PalBackend"]),
 
         // Live integration probe — Phase 8.
         //

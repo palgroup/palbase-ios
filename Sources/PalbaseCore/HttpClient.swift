@@ -5,6 +5,7 @@ package actor HttpClient: HTTPRequesting {
     private let config: PalbaseConfig
     private let tokens: TokenManager
     private var interceptors: [RequestInterceptor] = []
+    private var attestor: AppAttesting?
 
     package init(config: PalbaseConfig, tokens: TokenManager) {
         self.config = config
@@ -13,6 +14,37 @@ package actor HttpClient: HTTPRequesting {
 
     package func addInterceptor(_ interceptor: RequestInterceptor) {
         interceptors.append(interceptor)
+    }
+
+    /// Install the App Attest provider. When set, every request (except
+    /// the attestation endpoints themselves and unauthenticated credential
+    /// exchanges) carries a fresh, request-bound assertion proving the
+    /// call came from a genuine build of the app. `nil` = off.
+    package func setAttestor(_ attestor: AppAttesting?) {
+        self.attestor = attestor
+    }
+
+    /// Compute App Attest headers for an outgoing request, or `nil` when
+    /// attestation is off / not applicable. Skips the `/attest/*`
+    /// endpoints (the attestor calls them itself — attaching an assertion
+    /// there would recurse) and unauthenticated credential paths.
+    private func attestationHeaders(method: String, path: String, body: Data?) async throws(PalbaseCoreError) -> [String: String] {
+        guard let attestor, !Self.isAttestPath(path), !Self.isUnauthenticatedPath(path) else {
+            return [:]
+        }
+        do {
+            return try await attestor.assertionHeaders(method: method, path: path, body: body)
+        } catch {
+            // An attestation failure must not be silently dropped — the
+            // server would reject the request anyway. Surface it as a
+            // network-class error so the caller sees a clear failure.
+            throw PalbaseCoreError.network(message: "App Attest failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Attestation endpoints the attestor itself drives; never attested.
+    nonisolated static func isAttestPath(_ path: String) -> Bool {
+        path.hasPrefix("/attest/")
     }
 
     package func request<T: Decodable & Sendable>(
@@ -117,6 +149,7 @@ package actor HttpClient: HTTPRequesting {
         if headers["Content-Type"] == nil && headers["content-type"] == nil {
             merged.removeValue(forKey: "Content-Type")
         }
+        for (k, v) in try await attestationHeaders(method: method, path: path, body: body) { merged[k] = v }
         for (k, v) in merged { request.setValue(v, forHTTPHeaderField: k) }
 
         for interceptor in interceptors {
@@ -178,6 +211,7 @@ package actor HttpClient: HTTPRequesting {
         if headers["Content-Type"] == nil && headers["content-type"] == nil {
             merged.removeValue(forKey: "Content-Type")
         }
+        for (k, v) in try await attestationHeaders(method: method, path: path, body: body) { merged[k] = v }
         for (k, v) in merged { request.setValue(v, forHTTPHeaderField: k) }
 
         for interceptor in interceptors {
@@ -343,6 +377,11 @@ package actor HttpClient: HTTPRequesting {
             }
         }
 
+        // Bind App Attest to the exact bytes on the wire (request.httpBody).
+        for (k, v) in try await attestationHeaders(method: method, path: path, body: request.httpBody) {
+            request.setValue(v, forHTTPHeaderField: k)
+        }
+
         for interceptor in interceptors {
             do {
                 try await interceptor.intercept(&request)
@@ -417,6 +456,7 @@ package actor HttpClient: HTTPRequesting {
         if extraHeaders["Content-Type"] == nil && extraHeaders["content-type"] == nil {
             merged.removeValue(forKey: "Content-Type")
         }
+        for (k, v) in try await attestationHeaders(method: method, path: path, body: body) { merged[k] = v }
         for (k, v) in merged { request.setValue(v, forHTTPHeaderField: k) }
 
         for interceptor in interceptors {

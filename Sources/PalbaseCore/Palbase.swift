@@ -133,11 +133,18 @@ public enum Palbase {
     /// no attestation headers are attached. See `AppAttesting`.
     package static var attestor: AppAttesting? { state.attestor }
 
-    /// Install (or clear) the App Attest provider. Called by the façade
-    /// layer after `configure`, once it knows whether the project
-    /// enforces attestation.
+    /// Install (or clear) the App Attest provider. Called by the
+    /// `PalbaseAppAttest` module after `configure`. Stored in global state
+    /// and pushed into the live `HttpClient`(s) so every outgoing request
+    /// carries an assertion (except `/attest/*` and unauthenticated paths).
     package static func setAttestor(_ attestor: AppAttesting?) {
         state.setAttestor(attestor)
+        if let http = state.http as? HttpClient {
+            Task { await http.setAttestor(attestor) }
+        }
+        if let backendHttp = state.backendHttp as? HttpClient, backendHttp !== (state.http as? HttpClient) {
+            Task { await backendHttp.setAttestor(attestor) }
+        }
     }
 
     /// API key supplied to `configure(apiKey:)`. `nil` until configured.

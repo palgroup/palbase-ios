@@ -74,20 +74,15 @@ Only these symbols are allowed to be `public`:
 - Module-specific `enum {Module}Error: PalbaseError`
 - Domain types: `User`, `AuthSuccess`, `MFAFactor`, etc. (read-only — init is `package`)
 
-**PalbaseBackend:**
-- `struct PalbaseBackend` + `static var shared` + `call`/`upload`/`openAPISpec`
-- `enum BackendError: PalbaseError`
-- `struct FieldError`, `struct BackendUploadProgress`, `struct UploadConstraints` (read-only)
+> The managed-backend SDK (PalbaseBackend / PalBackend façade) lives in its own
+> repo, `palbackend-ios`. palbase-ios ships no backend module.
 
-**PalBackend (façade product):**
-- `enum PalBackend` — `configure(apiKey:…)` overloads + `endpointRef` ONLY
-- `struct PalBackendClient` + `backend`/`auth` accessors; `let pb`
-- Re-exports `PalbaseBackend` + `PalbaseAuth` surfaces; does NOT expose `PalbaseDB`
-
-**PalbaseAppAttest (internal target — only used via the façade):**
-- `actor AppAttestProvider: AppAttesting` + `public init(http:)` (façade wires it)
-- `enum AppAttestError`
+**PalbaseAppAttest (opt-in product):**
+- `Palbase.enableAppAttest()` / `disableAppAttest()` — the only public entry
+- `actor AppAttestProvider: AppAttesting`, `enum AppAttestError`
 - Everything else (`DeviceAttestProvider`, `AttestKeyStore`, providers/stores) is `package`
+- Once enabled, `HttpClient` attaches an assertion to every request (except
+  `/attest/*` and unauthenticated credential paths)
 
 **Forbidden public:**
 - `HttpClient`, `TokenManager`, `HTTPRequesting`, `RequestInterceptor`
