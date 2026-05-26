@@ -11,7 +11,7 @@
 //   4. Backend      — server-side `/api/todos` handler (deployed by
 //                     sdk/palbase-ts/e2e-live/todoapp-deploy.mjs)
 //                     returns only the caller's todos, regardless of
-//                     RLS — proves ctx.palbase.documents wiring +
+//                     RLS — proves ctx.docs wiring +
 //                     ctx.user identity.
 //
 // Runs only when STUDIO_BASE + TODOAPP_REF + TODOAPP_ANON_KEY are set
@@ -206,7 +206,7 @@ struct TodoAppLiveTests {
             _ = try await ref.set(TodoDoc(title: "bob todo \(i)", done: false, owner: bob.userId))
         }
 
-        // Backend handler reads each id via ctx.palbase.documents.get
+        // Backend handler reads each id via ctx.docs.get
         // and post-filters by owner. We pass each user's own ids to
         // confirm:
         //   1. They get their own todos back (good path).
@@ -305,7 +305,7 @@ struct TodoAppLiveTests {
         _ = try await ref.set(TodoDoc(title: "alice via backend test", done: false, owner: alice.userId))
 
         // Now call /api/todos as alice — server-side handler reads
-        // each id via ctx.palbase.documents and filters to alice.uid.
+        // each id via ctx.docs and filters to alice.uid.
         let (status, value, raw) = try await session.getJSON(
             "/api/todos", query: ["ids": id], bearer: alice.accessToken, as: TodoApiResponse.self
         )

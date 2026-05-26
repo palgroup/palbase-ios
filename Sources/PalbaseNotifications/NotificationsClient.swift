@@ -14,7 +14,7 @@ import Foundation
 /// Server-only senders (push.send, email.send, sms.send, inbox.send) are
 /// intentionally **not** part of this surface — those need a service-role
 /// apikey and live on the backend SDKs (`@palbase/server`'s
-/// ServerClient.notifications, or `ctx.palbase.notifications` inside a
+/// ServerClient.notifications, or `ctx.notifications` inside a
 /// palbase-backend handler).
 public struct PalbaseNotifications: Sendable {
     private let http: HTTPRequesting
