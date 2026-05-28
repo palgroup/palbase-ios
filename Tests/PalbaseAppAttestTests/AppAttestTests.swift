@@ -94,12 +94,12 @@ struct AppAttestTests {
         let http = AttestMockHTTP(log: log, challenge: "chal-123", enrollOK: true)
         let provider = AppAttestProvider(device: device, store: store, http: http)
 
-        let h1 = try await provider.assertionHeaders(method: "POST", path: "/rpc/checkout", body: Data("{}".utf8))
+        let h1 = try await provider.assertionHeaders(method: "POST", path: "/checkout", body: Data("{}".utf8))
         #expect(h1["X-Palbase-Attest-KeyId"] == "key-1")
         #expect(h1["X-Palbase-Attest-Assertion"] != nil)
         #expect(h1["X-Palbase-Attest-Challenge"] == "chal-123")
 
-        let h2 = try await provider.assertionHeaders(method: "POST", path: "/rpc/other", body: Data("{}".utf8))
+        let h2 = try await provider.assertionHeaders(method: "POST", path: "/other", body: Data("{}".utf8))
         #expect(h2["X-Palbase-Attest-KeyId"] == "key-1") // same enrolled key
 
         // Key generated once; assertion generated per call.
@@ -120,7 +120,7 @@ struct AppAttestTests {
         let http = AttestMockHTTP(log: log, challenge: "c", enrollOK: true)
         let provider = AppAttestProvider(device: device, store: store, http: http)
 
-        let h = try await provider.assertionHeaders(method: "POST", path: "/rpc/x", body: nil)
+        let h = try await provider.assertionHeaders(method: "POST", path: "/x", body: nil)
         #expect(h["X-Palbase-Attest-KeyId"] == "pre-enrolled-key")
         #expect(await device.keyGenCount == 0)
         let paths = await log.all()
@@ -135,7 +135,7 @@ struct AppAttestTests {
         let provider = AppAttestProvider(device: device, store: store, http: http)
 
         await #expect(throws: AppAttestError.self) {
-            _ = try await provider.assertionHeaders(method: "POST", path: "/rpc/x", body: nil)
+            _ = try await provider.assertionHeaders(method: "POST", path: "/x", body: nil)
         }
     }
 
@@ -147,14 +147,14 @@ struct AppAttestTests {
         let provider = AppAttestProvider(device: device, store: store, http: http)
 
         await #expect(throws: AppAttestError.self) {
-            _ = try await provider.assertionHeaders(method: "POST", path: "/rpc/x", body: nil)
+            _ = try await provider.assertionHeaders(method: "POST", path: "/x", body: nil)
         }
     }
 
     @Test func clientDataBindsRequest() {
-        let a = AppAttestProvider.clientData(challenge: "c", method: "POST", path: "/rpc/a", body: Data("1".utf8))
-        let b = AppAttestProvider.clientData(challenge: "c", method: "POST", path: "/rpc/b", body: Data("1".utf8))
-        let c = AppAttestProvider.clientData(challenge: "c2", method: "POST", path: "/rpc/a", body: Data("1".utf8))
+        let a = AppAttestProvider.clientData(challenge: "c", method: "POST", path: "/a", body: Data("1".utf8))
+        let b = AppAttestProvider.clientData(challenge: "c", method: "POST", path: "/b", body: Data("1".utf8))
+        let c = AppAttestProvider.clientData(challenge: "c2", method: "POST", path: "/a", body: Data("1".utf8))
         #expect(a != b) // different path
         #expect(a != c) // different challenge
     }

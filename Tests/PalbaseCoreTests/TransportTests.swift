@@ -130,7 +130,7 @@ struct TransportTests {
     func nonThrowingOnError() async throws {
         StubURLProtocol.setStub(.init(status: 404, body: Data(#"{"error":"x"}"#.utf8)))
         let client = await makeClient()
-        let result = try await client.requestRawBodyResult(method: "POST", path: "/rpc/x", body: Data("{}".utf8), headers: ["Content-Type": "application/json"])
+        let result = try await client.requestRawBodyResult(method: "POST", path: "/backend/x", body: Data("{}".utf8), headers: ["Content-Type": "application/json"])
         #expect(result.status == 404)
         #expect(String(data: result.data, encoding: .utf8)?.contains("\"error\"") == true)
     }
@@ -139,7 +139,7 @@ struct TransportTests {
     func retryAfterPreserved() async throws {
         StubURLProtocol.setStub(.init(status: 503, body: Data("{}".utf8), headers: ["Retry-After": "7"]))
         let client = await makeClient(maxRetries: 1)
-        let result = try await client.requestRawBodyResult(method: "POST", path: "/rpc/x", body: Data("{}".utf8), headers: [:])
+        let result = try await client.requestRawBodyResult(method: "POST", path: "/backend/x", body: Data("{}".utf8), headers: [:])
         #expect(result.status == 503)
         #expect(result.headers["Retry-After"] == "7")
     }
@@ -149,7 +149,7 @@ struct TransportTests {
         StubURLProtocol.setStub(.init(status: 200))
         let client = await makeClient()
         let payload = Data(#"{"items":["a","b"]}"#.utf8)
-        _ = try await client.requestRawBodyResult(method: "POST", path: "/rpc/checkout", body: payload, headers: ["Content-Type": "application/json"])
+        _ = try await client.requestRawBodyResult(method: "POST", path: "/backend/checkout", body: payload, headers: ["Content-Type": "application/json"])
         #expect(StubURLProtocol.lastBody == payload)
     }
 
@@ -167,7 +167,7 @@ struct TransportTests {
 
         var threw = false
         do {
-            _ = try await client.requestRawBodyResult(method: "POST", path: "/rpc/slow", body: Data("{}".utf8), headers: [:])
+            _ = try await client.requestRawBodyResult(method: "POST", path: "/backend/slow", body: Data("{}".utf8), headers: [:])
         } catch {
             threw = true
         }
@@ -182,7 +182,7 @@ struct TransportTests {
 
         var threw = false
         do {
-            _ = try await client.requestRawBodyResult(method: "POST", path: "/rpc/x", body: Data("{}".utf8), headers: [:])
+            _ = try await client.requestRawBodyResult(method: "POST", path: "/backend/x", body: Data("{}".utf8), headers: [:])
         } catch {
             threw = true
         }

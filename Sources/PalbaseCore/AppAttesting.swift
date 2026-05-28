@@ -19,7 +19,7 @@ package protocol AppAttesting: Sendable {
     ///
     /// - Parameters:
     ///   - method: HTTP method of the outgoing request.
-    ///   - path: request path (e.g. `/rpc/checkout`).
+    ///   - path: request path (e.g. `/checkout`).
     ///   - body: request body bytes, if any, so the assertion can bind to
     ///     the payload hash.
     /// - Returns: headers to merge into the request
