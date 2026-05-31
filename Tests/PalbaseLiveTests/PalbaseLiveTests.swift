@@ -49,7 +49,7 @@ func configurePalbase(for project: Project) async throws {
     // configuring their app with `Palbase.configure(apiKey:mode:.dev)`
     // sees identical behaviour.
     Palbase.configure(
-        PalbaseConfig(apiKey: project.anonKey, mode: .dev, urlSession: session)
+        PalbaseConfig(apiKey: project.publishableKey, mode: .dev, urlSession: session)
     )
     if let auth = try? PalbaseAuth.shared {
         try? await auth.signOut()
@@ -158,13 +158,13 @@ struct PalbaseLiveDBTests {
         let done: Bool
     }
 
-    @Test("DB CRUD round-trip via service-role-style anon flow")
+    @Test("DB CRUD round-trip via publishable-key flow")
     func dbCrud() async throws {
         let project = try await LiveFixture.shared.project()
         try await configurePalbase(for: project)
         let auth = try PalbaseAuth.shared
 
-        // RLS gating in the default schema is permissive for service-role
+        // RLS gating in the default schema is permissive for managed-runtime
         // and authenticated; sign in as a fresh user to cover the
         // authenticated path.
         let stamp = Int(Date().timeIntervalSince1970 * 1000)

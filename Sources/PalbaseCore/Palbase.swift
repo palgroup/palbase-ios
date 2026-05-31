@@ -60,7 +60,6 @@ public enum Palbase {
                 url: backendURL,
                 backendURL: nil,
                 mode: config.mode,
-                serviceRoleKey: config.serviceRoleKey,
                 headers: config.headers,
                 urlSession: config.urlSession,
                 requestTimeout: config.requestTimeout,

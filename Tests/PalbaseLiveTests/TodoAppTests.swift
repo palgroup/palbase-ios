@@ -14,7 +14,7 @@
 //                     RLS — proves ctx.docs wiring +
 //                     ctx.user identity.
 //
-// Runs only when STUDIO_BASE + TODOAPP_REF + TODOAPP_ANON_KEY are set
+// Runs only when STUDIO_BASE + TODOAPP_REF + TODOAPP_PUBLISHABLE_KEY are set
 // in the environment.
 //
 // NOTE: run with `swift test --no-parallel` (or `--num-workers 1`).
@@ -32,8 +32,8 @@ import PalbaseDocs
 
 enum TodoAppConfig {
     static var ref: String? { ProcessInfo.processInfo.environment["TODOAPP_REF"] }
-    static var anonKey: String? { ProcessInfo.processInfo.environment["TODOAPP_ANON_KEY"] }
-    static var enabled: Bool { ref != nil && anonKey != nil && StudioConfig.enabled }
+    static var publishableKey: String? { ProcessInfo.processInfo.environment["TODOAPP_PUBLISHABLE_KEY"] }
+    static var enabled: Bool { ref != nil && publishableKey != nil && StudioConfig.enabled }
 
     static var apiBaseURL: String { "https://\(ref!).dev.palbase.studio" }
 }
@@ -71,12 +71,12 @@ struct TodoUser {
 
 actor TodoSession {
     private let baseURL: URL
-    private let anonKey: String
+    private let publishableKey: String
     private let session: URLSession
 
-    init(baseURL: URL, anonKey: String) {
+    init(baseURL: URL, publishableKey: String) {
         self.baseURL = baseURL
-        self.anonKey = anonKey
+        self.publishableKey = publishableKey
         let cfg = URLSessionConfiguration.default
         cfg.protocolClasses = [DebugSnoopProtocol.self] + (cfg.protocolClasses ?? [])
         self.session = URLSession(configuration: cfg)
@@ -97,7 +97,7 @@ actor TodoSession {
         url.appendPathComponent(path)
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
-        req.setValue(anonKey, forHTTPHeaderField: "apikey")
+        req.setValue(publishableKey, forHTTPHeaderField: "apikey")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let bearer { req.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization") }
         req.httpBody = try JSONSerialization.data(withJSONObject: json)
@@ -121,7 +121,7 @@ actor TodoSession {
         }
         var req = URLRequest(url: url)
         req.httpMethod = "GET"
-        req.setValue(anonKey, forHTTPHeaderField: "apikey")
+        req.setValue(publishableKey, forHTTPHeaderField: "apikey")
         req.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
         let (data, resp) = try await session.data(for: req)
         let http = resp as? HTTPURLResponse
@@ -133,14 +133,14 @@ actor TodoSession {
 @Suite(
     .serialized,
     .enabled(if: TodoAppConfig.enabled,
-             "TODOAPP_REF + TODOAPP_ANON_KEY + STUDIO_BASE not set; TodoApp probe skipped"))
+             "TODOAPP_REF + TODOAPP_PUBLISHABLE_KEY + STUDIO_BASE not set; TodoApp probe skipped"))
 struct TodoAppLiveTests {
     /// 1. Two fresh users sign up + sign in, JWTs round-trip cleanly.
     @Test("Auth: two fresh users round-trip signUp + signIn")
     func authRoundTrip() async throws {
         let session = TodoSession(
             baseURL: URL(string: TodoAppConfig.apiBaseURL)!,
-            anonKey: TodoAppConfig.anonKey!
+            publishableKey: TodoAppConfig.publishableKey!
         )
         let stamp = Int(Date().timeIntervalSince1970 * 1000)
         let alice = try await session.signUp(
@@ -165,14 +165,14 @@ struct TodoAppLiveTests {
         let project = Project(
             ref: TodoAppConfig.ref!,
             email: "n/a", password: "n/a",
-            anonKey: TodoAppConfig.anonKey!,
+            publishableKey: TodoAppConfig.publishableKey!,
             orgId: "n/a"
         )
         try await configurePalbase(for: project)
 
         let session = TodoSession(
             baseURL: URL(string: project.apiBaseURL)!,
-            anonKey: TodoAppConfig.anonKey!
+            publishableKey: TodoAppConfig.publishableKey!
         )
         let stamp = Int(Date().timeIntervalSince1970 * 1000)
         let alice = try await session.signUp(
@@ -235,7 +235,7 @@ struct TodoAppLiveTests {
         let project = Project(
             ref: TodoAppConfig.ref!,
             email: "n/a", password: "n/a",
-            anonKey: TodoAppConfig.anonKey!,
+            publishableKey: TodoAppConfig.publishableKey!,
             orgId: "n/a"
         )
         try await configurePalbase(for: project)
@@ -283,7 +283,7 @@ struct TodoAppLiveTests {
     func backendInvoke() async throws {
         let session = TodoSession(
             baseURL: URL(string: TodoAppConfig.apiBaseURL)!,
-            anonKey: TodoAppConfig.anonKey!
+            publishableKey: TodoAppConfig.publishableKey!
         )
         let stamp = Int(Date().timeIntervalSince1970 * 1000)
         let alice = try await session.signUp(
@@ -294,7 +294,7 @@ struct TodoAppLiveTests {
         // Alice writes 1 todo via paldocs (Bearer through Kong → role=authenticated)
         let project = Project(
             ref: TodoAppConfig.ref!, email: alice.email, password: alice.password,
-            anonKey: TodoAppConfig.anonKey!, orgId: "n/a"
+            publishableKey: TodoAppConfig.publishableKey!, orgId: "n/a"
         )
         try await configurePalbase(for: project)
         let auth = try PalbaseAuth.shared

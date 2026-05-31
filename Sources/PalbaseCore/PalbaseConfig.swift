@@ -31,7 +31,7 @@ public enum PalbaseMode: String, Sendable {
 /// transport behavior (custom URL, timeouts, custom URLSession for
 /// testing).
 public struct PalbaseConfig: Sendable {
-    /// API key in `pb_{ref}_{random}` format.
+    /// Publishable API key in `pb_{ref}_{random}` format.
     public let apiKey: String
 
     /// Override the base URL. Defaults to `https://{ref}.{mode.domain}`
@@ -48,9 +48,6 @@ public struct PalbaseConfig: Sendable {
     /// Environment to target. `.prod` by default; `.dev` swaps the
     /// domain to `*.dev.palbase.studio`. Ignored when `url` is set.
     public let mode: PalbaseMode
-
-    /// Service role key (server-only). When set, used instead of the user's access token.
-    public let serviceRoleKey: String?
 
     /// Custom headers added to every request.
     public let headers: [String: String]
@@ -72,7 +69,6 @@ public struct PalbaseConfig: Sendable {
         url: String? = nil,
         backendURL: String? = nil,
         mode: PalbaseMode = .prod,
-        serviceRoleKey: String? = nil,
         headers: [String: String] = [:],
         urlSession: URLSession = .shared,
         requestTimeout: TimeInterval = 30,
@@ -83,7 +79,6 @@ public struct PalbaseConfig: Sendable {
         self.url = url
         self.backendURL = backendURL
         self.mode = mode
-        self.serviceRoleKey = serviceRoleKey
         self.headers = headers
         self.urlSession = urlSession
         self.requestTimeout = requestTimeout

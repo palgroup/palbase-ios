@@ -293,10 +293,6 @@ package actor HttpClient: HTTPRequesting {
             headers["Authorization"] = "Bearer \(token)"
         }
 
-        if attachAuth, let serviceRole = config.serviceRoleKey {
-            headers["Authorization"] = "Bearer \(serviceRole)"
-        }
-
         for (k, v) in config.headers { headers[k] = v }
         for (k, v) in extra { headers[k] = v }
         return headers

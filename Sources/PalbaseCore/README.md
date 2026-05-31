@@ -23,9 +23,8 @@ Call once at app startup (e.g., in `App.init()` or `AppDelegate`).
 
 | Field | Default | Purpose |
 |-------|---------|---------|
-| `apiKey` | required | `pb_{ref}_{random}` |
+| `apiKey` | required | Publishable `pb_{ref}_{random}` |
 | `url` | derived from key | Override base URL |
-| `serviceRoleKey` | nil | Server-side bypass token |
 | `headers` | empty | Extra request headers |
 | `urlSession` | `.shared` | URLSession for HTTP (override for tests/background) |
 | `requestTimeout` | 30s | Per-request timeout |

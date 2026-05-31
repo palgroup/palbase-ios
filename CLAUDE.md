@@ -208,7 +208,6 @@ public func onAuthStateChange(_ callback: @escaping AuthStateCallback) async -> 
 public struct PalbaseConfig: Sendable {
     public let apiKey: String
     public let url: String?                 // base URL override
-    public let serviceRoleKey: String?      // server-side bypass token
     public let headers: [String: String]
     public let urlSession: URLSession       // injectable for tests
     public let requestTimeout: TimeInterval

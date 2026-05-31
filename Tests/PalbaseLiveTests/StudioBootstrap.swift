@@ -38,7 +38,7 @@ actor Studio {
     }
 
     /// One-shot boot: signup + login + project create + apikey reveal.
-    /// Returns everything the per-test probes need: ref, anon apikey, etc.
+    /// Returns everything the per-test probes need: ref, publishable apikey, etc.
     func bootstrap() async throws -> Project {
         let stamp = Int(Date().timeIntervalSince1970)
         let suffix = String(stamp, radix: 36).suffix(6)
@@ -84,10 +84,10 @@ actor Studio {
         try await waitForWorkflow(workflowId, deadline: Date().addingTimeInterval(180))
 
         let revealed = try await trpcGet("apikey.reveal", input: ["ref": AnyCodable(ref)])
-        guard let dict = revealed.dict, let anonKey = dict["anonKey"]?.string else {
-            throw LiveError.bootstrapFailed("no anon apikey for \(ref)")
+        guard let dict = revealed.dict, let publishableKey = dict["publishableKey"]?.string else {
+            throw LiveError.bootstrapFailed("no publishable apikey for \(ref)")
         }
-        return Project(ref: ref, email: email, password: password, anonKey: anonKey, orgId: orgId)
+        return Project(ref: ref, email: email, password: password, publishableKey: publishableKey, orgId: orgId)
     }
 
     /// Block until the workflow Temporal-side reports COMPLETED. Mirrors
@@ -180,7 +180,7 @@ struct Project: Sendable {
     let ref: String
     let email: String
     let password: String
-    let anonKey: String
+    let publishableKey: String
     let orgId: String
 
     /// Per-tenant base URL used by PalbaseConfig.url.

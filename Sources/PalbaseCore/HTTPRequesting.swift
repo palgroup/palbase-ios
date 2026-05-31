@@ -67,7 +67,7 @@ package protocol HTTPRequesting: Sendable {
     /// gets per-chunk byte counts via `onProgress`. No automatic retry —
     /// an interrupted upload should be restarted by the caller (and a
     /// retried upload is de-duplicated by the idempotency key the backend
-    /// attaches). Auth headers, anon key, and the base URL are applied by
+    /// attaches). Auth headers, publishable key, and the base URL are applied by
     /// the transport, exactly as for a normal request.
     func uploadRawBodyResult(
         method: String,

@@ -12,7 +12,7 @@ import Foundation
 ///     opt-in map).
 ///
 /// Server-only senders (push.send, email.send, sms.send, inbox.send) are
-/// intentionally **not** part of this surface — those need a service-role
+/// intentionally **not** part of this surface — those need a managed-runtime
 /// apikey and live on the backend SDKs (`@palbase/server`'s
 /// ServerClient.notifications, or `ctx.notifications` inside a
 /// palbase-backend handler).

@@ -191,4 +191,4 @@ do {
 
 - [ ] Device enrichment (OS version, model) — currently server-only
 - [ ] Group analytics (`$groups` property)
-- [ ] Cohort / funnel / retention queries — server-side only (service key required)
+- [ ] Cohort / funnel / retention queries — server-side only (managed authority required)
