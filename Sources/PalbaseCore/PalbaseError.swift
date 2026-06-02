@@ -100,18 +100,62 @@ public enum PalbaseCoreError: PalbaseError {
 
 /// Represents the error JSON returned by the Palbase server.
 /// Modules use this to map server errors to their own error cases.
+///
+/// Tolerant by design: the canonical Palbase envelope is
+/// `{error, error_description, status, request_id}`, but an error can also
+/// surface from a gateway/proxy in front of the service (Kong, an ingress, a
+/// 502/504 page) whose body omits some of these fields or has a different
+/// shape entirely. The decoder must NOT throw `keyNotFound` on such a body —
+/// otherwise a real 4xx/5xx is masked by a decoding error and the caller never
+/// sees the actual status. So `error`/`error_description`/`status` are decoded
+/// leniently with sensible fallbacks; only well-formed Palbase errors get the
+/// rich fields, malformed ones still produce a usable envelope.
 package struct PalbaseErrorEnvelope: Sendable, Decodable {
     package let code: String
     package let message: String
-    package let status: Int
+    package let status: Int?
     package let requestId: String?
     package let details: [String: String]?
 
-    enum CodingKeys: String, CodingKey {
-        case code = "error"
-        case message = "error_description"
-        case status
-        case requestId = "request_id"
-        case details
+    // The envelope is decoded from the RAW wire shape, independent of any
+    // decoder key strategy. A snake_case CodingKey plus a
+    // `.convertFromSnakeCase` decoder fight each other (the strategy rewrites
+    // the incoming key first, so an explicit snake_case CodingKey never matches
+    // and the field is silently dropped — error_description + request_id were
+    // both being lost). To be correct no matter which decoder a call site uses,
+    // `init(from:)` reads the wire keys directly via a raw string-key container
+    // and tolerates BOTH snake_case and the camelCase a converting decoder
+    // would produce. So this envelope decodes the same way under
+    // `JSONDecoder()` and `JSONDecoder.palbaseDefault`.
+    private struct RawKey: CodingKey {
+        let stringValue: String
+        init(_ s: String) { stringValue = s }
+        init?(stringValue s: String) { stringValue = s }
+        var intValue: Int? { nil }
+        init?(intValue: Int) { nil }
+    }
+
+    package init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: RawKey.self)
+        // Read the first present spelling: wire snake_case, or the camelCase a
+        // `.convertFromSnakeCase` decoder would have rewritten the key to.
+        func str(_ keys: String...) -> String? {
+            for k in keys {
+                if let v = try? c.decode(String.self, forKey: RawKey(k)) { return v }
+            }
+            return nil
+        }
+        // `error` missing → generic code so callers still get a typed error
+        // rather than a decoding failure that hides the HTTP status.
+        let decodedCode = str("error")
+        self.code = decodedCode ?? "unknown_error"
+        // `error_description` missing → fall back to the code (always non-empty),
+        // so the user-facing message is at least the stable error identifier.
+        self.message = str("error_description", "errorDescription") ?? (decodedCode ?? "unknown_error")
+        // `status` is informational here (the transport already knows the real
+        // HTTP status); optional so a gateway body without it still decodes.
+        self.status = (try? c.decode(Int.self, forKey: RawKey("status")))
+        self.requestId = str("request_id", "requestId")
+        self.details = (try? c.decode([String: String].self, forKey: RawKey("details")))
     }
 }

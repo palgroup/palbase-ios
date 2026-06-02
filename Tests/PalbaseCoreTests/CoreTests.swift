@@ -41,6 +41,58 @@ struct CoreTests {
     }
 }
 
+@Suite("PalbaseErrorEnvelope tolerant decode")
+struct ErrorEnvelopeTests {
+    private func decode(_ json: String) throws -> PalbaseErrorEnvelope {
+        try JSONDecoder.palbaseDefault.decode(PalbaseErrorEnvelope.self, from: Data(json.utf8))
+    }
+
+    @Test("canonical Palbase envelope decodes all fields")
+    func canonical() throws {
+        let env = try decode(#"""
+        {"error":"email_not_confirmed","error_description":"Please confirm your email","status":403,"request_id":"req_abc"}
+        """#)
+        #expect(env.code == "email_not_confirmed")
+        // The convertFromSnakeCase decoder + explicit CodingKey("error_description")
+        // must still populate message — this locks that they don't fight.
+        #expect(env.message == "Please confirm your email")
+        #expect(env.status == 403)
+        #expect(env.requestId == "req_abc")
+    }
+
+    @Test("body missing error_description falls back to the code (no keyNotFound)")
+    func missingDescription() throws {
+        // A gateway/proxy 403 that carries only an `error` field. Before the
+        // tolerant decoder this threw keyNotFound("error_description") and
+        // masked the real status; now it yields a usable envelope.
+        let env = try decode(#"{"error":"forbidden"}"#)
+        #expect(env.code == "forbidden")
+        #expect(env.message == "forbidden")
+        #expect(env.status == nil)
+        #expect(env.requestId == nil)
+    }
+
+    @Test("body missing error falls back to unknown_error")
+    func missingError() throws {
+        let env = try decode(#"{"error_description":"Bad gateway"}"#)
+        #expect(env.code == "unknown_error")
+        #expect(env.message == "Bad gateway")
+    }
+
+    @Test("an empty/foreign gateway body still decodes (no throw)")
+    func foreignEnvelope() throws {
+        // e.g. a 502 page reduced to JSON, or a different service's error shape.
+        let empty = try decode("{}")
+        #expect(empty.code == "unknown_error")
+        #expect(empty.message == "unknown_error")
+        let foreign = try decode(#"{"message":"upstream timeout","statusCode":504}"#)
+        #expect(foreign.code == "unknown_error")
+        // `message` here is the canonical "error_description" key, absent in the
+        // foreign body, so it falls back to the code — not the foreign "message".
+        #expect(foreign.message == "unknown_error")
+    }
+}
+
 @Suite("TokenManager lifecycle")
 struct TokenManagerTests {
 
